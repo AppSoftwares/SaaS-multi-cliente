@@ -1,0 +1,6 @@
+# Nunca subir secretos ni artefactos de build a Vercel
+.env
+.env.*
+!.env.example
+.next
+node_modules
