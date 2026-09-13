@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy } from "lucide-react";
+import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { formatFecha } from "@/lib/format";
 import { linkWhatsApp } from "@/lib/whatsapp";
@@ -56,6 +56,13 @@ export function FacturasLista({
   const [guardando, setGuardando] = useState(false);
   const [reciboImprimir, setReciboImprimir] = useState<{ factura: Factura; pago: PagoProveedor } | null>(null);
   const [facturaCompartir, setFacturaCompartir] = useState<Factura | null>(null);
+  // A pedido del cliente: la lista principal solo muestra pendientes por
+  // pagar; las pagadas se archivan aparte y se consultan con un clic.
+  const [verPagadas, setVerPagadas] = useState(false);
+
+  const facturasPendientes = facturas.filter((f) => !f.pagada);
+  const facturasPagadas = facturas.filter((f) => f.pagada);
+  const facturasVisibles = verPagadas ? facturasPagadas : facturasPendientes;
 
   const nombreProveedor = (id: string | null) => proveedores.find((p) => p.id === id)?.nombre ?? null;
   const telefonoProveedor = (id: string | null) => proveedores.find((p) => p.id === id)?.telefono ?? null;
@@ -195,14 +202,27 @@ export function FacturasLista({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Facturas registradas ({facturas.length})</CardTitle>
+          <CardTitle className="text-base flex items-center justify-between">
+            <span>{verPagadas ? "Facturas pagadas" : "Pendientes por pagar"} ({facturasVisibles.length})</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setVerPagadas((v) => !v)}
+            >
+              <Archive className="h-3.5 w-3.5 mr-1" />
+              {verPagadas ? "Ver pendientes" : `Ver pagadas (${facturasPagadas.length})`}
+            </Button>
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {facturas.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4">Aún no hay facturas registradas.</p>
+          {facturasVisibles.length === 0 ? (
+            <p className="text-sm text-muted-foreground p-4">
+              {verPagadas ? "Aún no hay facturas pagadas." : "No hay facturas pendientes por pagar."}
+            </p>
           ) : (
             <ul className="divide-y divide-border/40">
-              {facturas.map((f, i) => {
+              {facturasVisibles.map((f, i) => {
                 const saldo = saldoPendiente(f);
                 const abonosF = pagosDeFactura(f.id);
                 return (

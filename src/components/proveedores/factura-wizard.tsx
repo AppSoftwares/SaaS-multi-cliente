@@ -33,6 +33,11 @@ interface ItemEditable {
   sku: string;
   codigo_barras: string;
   cantidad: number;
+  // Precio de costo de lista (antes del descuento del proveedor) y el % que
+  // ese proveedor da sobre ese precio en esta factura. precio_costo (el que
+  // realmente se guarda) es siempre costoLista * (1 - descuentoPct/100).
+  costoLista: number;
+  descuentoPct: number | "";
   precio_costo: number;
   precio_venta: number;
   utilidad_pct: number | "";
@@ -41,6 +46,11 @@ interface ItemEditable {
   marca: string;
   unidad_medida: string;
   incluir: boolean;
+}
+
+function costoConDescuento(costoLista: number, descuentoPct: number | ""): number {
+  const pct = descuentoPct === "" ? 0 : Math.min(Math.max(descuentoPct, 0), 100);
+  return Math.round(costoLista * (1 - pct / 100) * 100) / 100;
 }
 
 export function FacturaWizard({
@@ -62,7 +72,7 @@ export function FacturaWizard({
   const guardandoBorradorRef = useRef(false);
 
   const [proveedorId, setProveedorId] = useState(borradorInicial?.factura.proveedor_id ?? "");
-  const [proveedorNuevo, setProveedorNuevo] = useState("");
+  const [proveedorNuevo, setProveedorNuevo] = useState(borradorInicial?.factura.proveedor_nombre_nuevo ?? "");
   const [imagenUrl, setImagenUrl] = useState<string | null>(borradorInicial?.factura.imagen_url ?? null);
   const [preview, setPreview] = useState<string | null>(borradorInicial?.factura.imagen_url ?? null);
   const [subiendo, setSubiendo] = useState(false);
@@ -82,6 +92,11 @@ export function FacturaWizard({
       sku: it.sku ?? "",
       codigo_barras: it.codigo_barras ?? "",
       cantidad: it.cantidad,
+      // El costo guardado ya es el neto (con cualquier descuento aplicado);
+      // se retoma como costo de lista sin descuento visible para no inventar
+      // un % que no se guardó.
+      costoLista: it.precio_costo,
+      descuentoPct: "",
       precio_costo: it.precio_costo,
       precio_venta: it.precio_venta_sugerido ?? 0,
       utilidad_pct: "",
@@ -109,6 +124,7 @@ export function FacturaWizard({
           facturaId: facturaIdRef.current,
           factura: {
             proveedor_id: proveedorId || null,
+            proveedor_nombre_nuevo: proveedorNuevo || null,
             numero_factura: numeroFactura || null,
             fecha: fecha || null,
             moneda,
@@ -144,7 +160,7 @@ export function FacturaWizard({
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, numeroFactura, fecha, moneda, montoTotal, proveedorId, vista]);
+  }, [items, numeroFactura, fecha, moneda, montoTotal, proveedorId, proveedorNuevo, vista]);
 
   async function cancelar() {
     if (facturaIdRef.current && !DEMO) {
@@ -169,6 +185,8 @@ export function FacturaWizard({
         sku: "",
         codigo_barras: "",
         cantidad: 1,
+        costoLista: 0,
+        descuentoPct: "",
         precio_costo: 0,
         precio_venta: 0,
         utilidad_pct: "",
@@ -271,6 +289,8 @@ export function FacturaWizard({
             sku: it.producto_bd.sku ?? "",
             codigo_barras: it.producto_bd.codigo_barras ?? "",
             cantidad: it.item_ia.cantidad,
+            costoLista: it.item_ia.precio_costo,
+            descuentoPct: "",
             precio_costo: it.item_ia.precio_costo,
             precio_venta: it.producto_bd.precio_venta,
             utilidad_pct: "",
@@ -288,6 +308,8 @@ export function FacturaWizard({
           sku: it.item_ia.sku ?? "",
           codigo_barras: it.item_ia.codigo_barras ?? "",
           cantidad: it.item_ia.cantidad,
+          costoLista: it.item_ia.precio_costo,
+          descuentoPct: "",
           precio_costo: it.item_ia.precio_costo,
           precio_venta: 0,
           utilidad_pct: "",
@@ -573,13 +595,20 @@ export function FacturaWizard({
         {items.map((it, i) => (
           <div key={i} className="rounded-xl border p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  it.status === "EXISTING" ? "bg-brand-cyan/20 text-brand-cyan" : "bg-primary/20 text-primary"
-                }`}
-              >
-                {it.status === "EXISTING" ? "Ya existe" : "Producto nuevo"}
-              </span>
+              <div className="flex items-center gap-2">
+                {/* Contador de ítem: para no perder la cuenta al cargar
+                    facturas largas (15-20 productos) ítem a ítem. */}
+                <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+                  Ítem {i + 1} de {items.length}
+                </span>
+                <span
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    it.status === "EXISTING" ? "bg-brand-cyan/20 text-brand-cyan" : "bg-primary/20 text-primary"
+                  }`}
+                >
+                  {it.status === "EXISTING" ? "Ya existe" : "Producto nuevo"}
+                </span>
+              </div>
               <div className="flex items-center gap-1">
                 {it.status === "EXISTING" && (
                   <Button
@@ -627,19 +656,45 @@ export function FacturaWizard({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Precio costo</Label>
+                  <Label>Precio costo {it.descuentoPct !== "" && it.descuentoPct > 0 ? "(lista)" : ""}</Label>
                   <Input
                     type="number"
                     step="0.01"
                     inputMode="decimal"
-                    value={it.precio_costo}
+                    value={it.costoLista}
                     onChange={(e) => {
-                      const costo = Number(e.target.value);
-                      setItem(i, "precio_costo", costo);
-                      if (it.status === "NEW") calcularPrecioVentaItem(i, costo, it.utilidad_pct);
+                      const costoLista = Number(e.target.value);
+                      const neto = costoConDescuento(costoLista, it.descuentoPct);
+                      setItem(i, "costoLista", costoLista);
+                      setItem(i, "precio_costo", neto);
+                      if (it.status === "NEW") calcularPrecioVentaItem(i, neto, it.utilidad_pct);
                     }}
                   />
                 </div>
+                <div className="space-y-1">
+                  <Label>Descuento del proveedor (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="Ej: 25"
+                    value={it.descuentoPct}
+                    onChange={(e) => {
+                      const descuentoPct = e.target.value === "" ? "" : Number(e.target.value);
+                      const neto = costoConDescuento(it.costoLista, descuentoPct);
+                      setItem(i, "descuentoPct", descuentoPct);
+                      setItem(i, "precio_costo", neto);
+                      if (it.status === "NEW") calcularPrecioVentaItem(i, neto, it.utilidad_pct);
+                    }}
+                  />
+                </div>
+                {it.descuentoPct !== "" && it.descuentoPct > 0 && (
+                  <div className="col-span-2 -mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    Costo con descuento: {it.precio_costo.toFixed(2)}
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label>SKU</Label>
                   <Input

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,16 @@ export function ProveedoresTabs({
   const [borradoresLista, setBorradoresLista] = useState(borradores);
   const [borradorInicial, setBorradorInicial] = useState<{ factura: Factura; items: FacturaItem[] } | null>(null);
   const [cargandoBorrador, setCargandoBorrador] = useState<string | null>(null);
+
+  // "borradores" (prop) se recalcula en el servidor en cada router.refresh(),
+  // pero useState solo toma su valor inicial en el primer montaje: sin este
+  // efecto, la lista local quedaba "congelada" desde la primera carga de la
+  // página y un borrador recién guardado (o con un id ya reemplazado) podía
+  // no existir más para esa lista vieja al reabrirlo — el síntoma reportado
+  // era "solo se puede abrir el borrador una vez".
+  useEffect(() => {
+    setBorradoresLista(borradores);
+  }, [borradores]);
 
   async function continuarBorrador(id: string) {
     setCargandoBorrador(id);

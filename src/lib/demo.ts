@@ -285,6 +285,7 @@ export const demoFacturas: (Factura & { proveedor_nombre?: string | null })[] = 
     estado: "aplicada",
     imagen_url: null,
     notas: null,
+    proveedor_nombre_nuevo: null,
     usuario_id: "demo-user",
     created_at: new Date(Date.now() - 5 * 86400e3).toISOString(),
     updated_at: new Date(Date.now() - 5 * 86400e3).toISOString(),

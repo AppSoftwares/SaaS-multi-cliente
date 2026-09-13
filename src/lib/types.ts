@@ -343,6 +343,7 @@ export interface Factura {
   estado: EstadoFactura;
   imagen_url: string | null;
   notas: string | null;
+  proveedor_nombre_nuevo: string | null;
   usuario_id: string | null;
   created_at: string;
   updated_at: string;

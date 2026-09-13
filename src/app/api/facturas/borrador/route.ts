@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
   const datosFactura = {
     negocio_id: negocioId,
     proveedor_id: f.proveedor_id || null,
+    // Nombre de un proveedor nuevo tecleado a mano (aún sin resolver a un
+    // proveedor real, eso pasa recién en /api/facturas/aplicar): se guarda
+    // aparte para no perderlo si el usuario sale y reabre el borrador.
+    proveedor_nombre_nuevo: f.proveedor_id ? null : f.proveedor_nombre_nuevo || null,
     numero_factura: f.numero_factura || null,
     fecha: f.fecha || null,
     moneda: f.moneda === "USD" ? "USD" : "BS",
