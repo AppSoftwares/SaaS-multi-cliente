@@ -66,11 +66,9 @@ export function VistaTicket({
     }
     if (hayIva) l.push(`IVA: ${formatBs(ivaBs)}`);
     l.push(`TOTAL: ${formatBs(totalBs)}`);
-    for (const p of pagos) {
-      const monto = p.moneda === "USD" ? `$${p.monto_moneda.toFixed(2)}` : formatBs(p.monto_bs);
-      l.push(`${p.metodo}: ${monto}`);
-    }
-    if (hayIgtf) l.push(`IGTF (divisas): ${formatBs(igtfBs)}`);
+    // El desglose por método de pago (Binance, Zelle, Efectivo, etc.) es de uso
+    // interno: no debe salir en el ticket físico que recibe el cliente, solo
+    // el total en bolívares. Queda visible en pantalla y en el historial.
     l.push("Gracias por su compra");
     return l;
   }
@@ -137,7 +135,10 @@ export function VistaTicket({
             <span>{formatBs(totalBs)}</span>
           </div>
         </div>
-        <div className="space-y-1 text-xs">
+        {/* Desglose de pagos: uso interno del negocio, se oculta al imprimir
+            (el ticket físico del cliente solo debe mostrar el TOTAL en Bs). */}
+        <div className="space-y-1 text-xs print:hidden">
+          <p className="text-muted-foreground">Pagos (uso interno, no se imprime)</p>
           {pagos.map((p, i) => (
             <div key={i} className="flex justify-between">
               <span>{p.metodo}</span>
