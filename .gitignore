@@ -42,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# material del cliente (audios/videos/fotos con datos personales, no debe subirse)
+/mas cambios/
+/cambios nuevos cliente/

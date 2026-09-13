@@ -9,15 +9,16 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { AlertTriangle, PackagePlus, PackageCheck } from "lucide-react";
 import { DEMO } from "@/lib/demo";
-import { resolverCatalogos } from "@/lib/catalogos";
-import { SelectorCombo, SelectorCategoria } from "@/components/captura/selectores";
-import type { Catalogos, Categoria, ResultadoProcesamiento } from "@/lib/types";
+import { resolverCatalogos, resolverProveedor } from "@/lib/catalogos";
+import { SelectorCombo, SelectorCategoria, SelectorProveedor } from "@/components/captura/selectores";
+import type { Catalogos, Categoria, Proveedor, ResultadoProcesamiento } from "@/lib/types";
 
 interface Props {
   resultado: ResultadoProcesamiento;
   esAdmin: boolean;
   imagenUrl?: string | null;
   catalogos: Catalogos;
+  proveedores: Proveedor[];
   negocioId: string;
   onListo: () => void;
 }
@@ -41,6 +42,7 @@ export function WizardProducto({
   esAdmin,
   imagenUrl,
   catalogos,
+  proveedores,
   negocioId,
   onListo,
 }: Props) {
@@ -64,14 +66,24 @@ export function WizardProducto({
     precio_venta: ia.precio_venta ?? 0,
     precio_costo: "" as number | "",
     stock_minimo: 0,
-    proveedor: "",
+    proveedorId: "",
+    proveedorNuevo: "",
     ubicacion: "",
   });
+  // % de utilidad sobre el costo: si el ADMIN carga costo + utilidad, el
+  // precio de venta se calcula solo (venta = costo * (1 + utilidad/100)).
+  const [utilidadPct, setUtilidadPct] = useState<number | "">("");
 
   const faltanDatos = !form.nombre.trim() || !form.catMadre.trim() || !(form.precio_venta > 0);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function calcularPrecioVenta(costo: number | "", utilidad: number | "") {
+    if (costo === "" || utilidad === "" || costo <= 0) return;
+    const venta = Math.round(costo * (1 + utilidad / 100) * 100) / 100;
+    set("precio_venta", venta);
   }
 
   async function sumarStock() {
@@ -112,9 +124,15 @@ export function WizardProducto({
       marca: form.marca,
       unidad: form.unidad_medida,
     });
-    const { catMadre: _m, catSub: _s, ...rest } = form;
+    const prov = await resolverProveedor(negocioId, proveedores, {
+      proveedorId: form.proveedorId,
+      nombreNuevo: form.proveedorNuevo,
+    });
+    const { catMadre: _m, catSub: _s, proveedorId: _pid, proveedorNuevo: _pn, ...rest } = form;
     void _m;
     void _s;
+    void _pid;
+    void _pn;
     const res = await fetch("/api/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -126,6 +144,8 @@ export function WizardProducto({
           categoria_id: cat.categoria_id,
           marca: cat.marca,
           unidad_medida: cat.unidad_medida,
+          proveedor_id: prov.proveedor_id,
+          proveedor: prov.proveedor,
           imagen_url: imagenUrl ?? null,
         },
       }),
@@ -240,6 +260,39 @@ export function WizardProducto({
             onChange={(e) => set("stock_minimo", Math.max(0, Number(e.target.value)))}
           />
         </Campo>
+        {esAdmin && (
+          <Campo label="Precio costo (USD)">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              value={form.precio_costo}
+              onChange={(e) => {
+                const costo = e.target.value === "" ? "" : Number(e.target.value);
+                set("precio_costo", costo);
+                calcularPrecioVenta(costo, utilidadPct);
+              }}
+            />
+          </Campo>
+        )}
+        {esAdmin && (
+          <Campo label="% Utilidad">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              placeholder="Ej: 30"
+              value={utilidadPct}
+              onChange={(e) => {
+                const pct = e.target.value === "" ? "" : Number(e.target.value);
+                setUtilidadPct(pct);
+                calcularPrecioVenta(form.precio_costo, pct);
+              }}
+            />
+          </Campo>
+        )}
         <Campo label="Precio venta (USD) *" invalido={!(form.precio_venta > 0)}>
           <Input
             type="number"
@@ -250,29 +303,19 @@ export function WizardProducto({
             onChange={(e) => set("precio_venta", Number(e.target.value))}
           />
         </Campo>
-        {esAdmin && (
-          <Campo label="Precio costo (USD)">
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              value={form.precio_costo}
-              onChange={(e) =>
-                set("precio_costo", e.target.value === "" ? "" : Number(e.target.value))
-              }
-            />
-          </Campo>
-        )}
         <Campo label="SKU">
           <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} />
         </Campo>
         <Campo label="Código de barras">
           <Input value={form.codigo_barras} onChange={(e) => set("codigo_barras", e.target.value)} />
         </Campo>
-        <Campo label="Proveedor">
-          <Input value={form.proveedor} onChange={(e) => set("proveedor", e.target.value)} />
-        </Campo>
+        <SelectorProveedor
+          proveedores={proveedores}
+          proveedorId={form.proveedorId}
+          nombreNuevo={form.proveedorNuevo}
+          onChange={(id, nuevo) => setForm((f) => ({ ...f, proveedorId: id, proveedorNuevo: nuevo }))}
+          puedeCrear={esAdmin}
+        />
         <Campo label="Ubicación">
           <Input value={form.ubicacion} onChange={(e) => set("ubicacion", e.target.value)} />
         </Campo>

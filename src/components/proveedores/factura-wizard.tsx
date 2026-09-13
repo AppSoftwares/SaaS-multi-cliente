@@ -1,0 +1,748 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Camera, Sparkles, RotateCcw, Trash2, RefreshCw, FileCheck2, PlusCircle, PencilLine, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { comprimirYSubirFactura } from "@/lib/storage";
+import { resolverCatalogos, resolverProveedor } from "@/lib/catalogos";
+import { generarCodigoBarrasInterno } from "@/lib/barcode";
+import { SelectorCombo, SelectorCategoria, SelectorProveedor } from "@/components/captura/selectores";
+import { EtiquetaBarcode } from "@/components/productos/etiqueta-barcode";
+import { DEMO } from "@/lib/demo";
+import type { Catalogos, Factura, FacturaItem, Proveedor, ResultadoProcesarFactura } from "@/lib/types";
+
+type Vista = "form" | "procesando" | "revision" | "listo";
+
+interface ItemEditable {
+  status: "EXISTING" | "NEW";
+  producto_id: string | null;
+  nombre: string;
+  sku: string;
+  codigo_barras: string;
+  cantidad: number;
+  precio_costo: number;
+  precio_venta: number;
+  utilidad_pct: number | "";
+  catMadre: string;
+  catSub: string;
+  marca: string;
+  unidad_medida: string;
+  incluir: boolean;
+}
+
+export function FacturaWizard({
+  catalogos,
+  proveedores,
+  negocioId,
+  borradorInicial,
+  onListo,
+}: {
+  catalogos: Catalogos;
+  proveedores: Proveedor[];
+  negocioId: string;
+  borradorInicial?: { factura: Factura; items: FacturaItem[] } | null;
+  onListo: () => void;
+}) {
+  const router = useRouter();
+  const [vista, setVista] = useState<Vista>(borradorInicial ? "revision" : "form");
+  const facturaIdRef = useRef<string | null>(borradorInicial?.factura.id ?? null);
+  const guardandoBorradorRef = useRef(false);
+
+  const [proveedorId, setProveedorId] = useState(borradorInicial?.factura.proveedor_id ?? "");
+  const [proveedorNuevo, setProveedorNuevo] = useState("");
+  const [imagenUrl, setImagenUrl] = useState<string | null>(borradorInicial?.factura.imagen_url ?? null);
+  const [preview, setPreview] = useState<string | null>(borradorInicial?.factura.imagen_url ?? null);
+  const [subiendo, setSubiendo] = useState(false);
+
+  const [numeroFactura, setNumeroFactura] = useState(borradorInicial?.factura.numero_factura ?? "");
+  const [fecha, setFecha] = useState(borradorInicial?.factura.fecha ?? "");
+  const [moneda, setMoneda] = useState<"BS" | "USD">(borradorInicial?.factura.moneda ?? "BS");
+  const [montoTotal, setMontoTotal] = useState(borradorInicial?.factura.monto_total ?? 0);
+  const [pagada, setPagada] = useState(false);
+  const [aplicarStock, setAplicarStock] = useState(true);
+
+  const [items, setItems] = useState<ItemEditable[]>(
+    (borradorInicial?.items ?? []).map((it) => ({
+      status: it.producto_id ? "EXISTING" : "NEW",
+      producto_id: it.producto_id,
+      nombre: it.nombre,
+      sku: it.sku ?? "",
+      codigo_barras: it.codigo_barras ?? "",
+      cantidad: it.cantidad,
+      precio_costo: it.precio_costo,
+      precio_venta: it.precio_venta_sugerido ?? 0,
+      utilidad_pct: "",
+      catMadre: "",
+      catSub: "",
+      marca: "",
+      unidad_medida: "Unidad",
+      incluir: true,
+    }))
+  );
+  const [guardando, setGuardando] = useState(false);
+  const [creados, setCreados] = useState<{ nombre: string; codigo_barras: string }[]>([]);
+
+  // Guarda automáticamente el progreso como borrador para que, si el usuario
+  // se sale a revisar otra pantalla, pueda volver y continuar donde quedó.
+  async function guardarBorrador() {
+    if (DEMO || guardandoBorradorRef.current) return;
+    if (items.length === 0 && !numeroFactura && !proveedorId) return;
+    guardandoBorradorRef.current = true;
+    try {
+      const res = await fetch("/api/facturas/borrador", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          facturaId: facturaIdRef.current,
+          factura: {
+            proveedor_id: proveedorId || null,
+            numero_factura: numeroFactura || null,
+            fecha: fecha || null,
+            moneda,
+            monto_total: montoTotal,
+            imagen_url: imagenUrl,
+          },
+          items: items.map((it) => ({
+            producto_id: it.producto_id,
+            nombre: it.nombre,
+            sku: it.sku || null,
+            codigo_barras: it.codigo_barras || null,
+            cantidad: it.cantidad,
+            precio_costo: it.precio_costo,
+            precio_venta: it.precio_venta || null,
+            es_nuevo: it.status === "NEW",
+          })),
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.facturaId) facturaIdRef.current = json.facturaId;
+    } catch {
+      // Autosave silencioso: si falla, se reintenta en el próximo cambio.
+    } finally {
+      guardandoBorradorRef.current = false;
+    }
+  }
+
+  // Autoguardado con debounce mientras el usuario edita la revisión.
+  useEffect(() => {
+    if (DEMO || vista !== "revision") return;
+    const t = setTimeout(() => {
+      guardarBorrador();
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, numeroFactura, fecha, moneda, montoTotal, proveedorId, vista]);
+
+  async function cancelar() {
+    if (facturaIdRef.current && !DEMO) {
+      await fetch(`/api/facturas/borrador/${facturaIdRef.current}`, { method: "DELETE" }).catch(() => {});
+    }
+    onListo();
+  }
+
+  async function guardarYSalirDespues() {
+    await guardarBorrador();
+    toast.success("Guardado. Podrás continuar esta factura desde 'Facturas en borrador'.");
+    onListo();
+  }
+
+  function agregarItemManual() {
+    setItems((arr) => [
+      ...arr,
+      {
+        status: "NEW",
+        producto_id: null,
+        nombre: "",
+        sku: "",
+        codigo_barras: "",
+        cantidad: 1,
+        precio_costo: 0,
+        precio_venta: 0,
+        utilidad_pct: "",
+        catMadre: "",
+        catSub: "",
+        marca: "",
+        unidad_medida: "Unidad",
+        incluir: true,
+      },
+    ]);
+  }
+
+  // Carga 100% manual: salta la foto y la IA, va directo a la revisión con
+  // la lista de ítems vacía para que el usuario los agregue uno a uno.
+  function cargarManual() {
+    setVista("revision");
+    if (items.length === 0) agregarItemManual();
+  }
+
+  function setItem<K extends keyof ItemEditable>(i: number, k: K, v: ItemEditable[K]) {
+    setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
+  }
+
+  // Costo + % utilidad -> precio de venta calculado (el ADMIN ya no tiene que
+  // sacar la cuenta con calculadora).
+  function calcularPrecioVentaItem(i: number, costo: number, utilidad: number | "") {
+    if (utilidad === "" || !(costo > 0)) return;
+    const venta = Math.round(costo * (1 + utilidad / 100) * 100) / 100;
+    setItem(i, "precio_venta", venta);
+  }
+
+  // Si el código de barras o SKU que se está tipeando ya existe en el
+  // catálogo, convierte la línea a EXISTING y trae categoría/marca/unidad/
+  // precio de venta automáticamente (no hace falta volver a cargarlos).
+  async function buscarProductoExistente(i: number) {
+    const it = items[i];
+    if (!it || it.status !== "NEW") return;
+    const codigo = it.codigo_barras.trim();
+    const sku = it.sku.trim();
+    if (!codigo && !sku) return;
+    if (DEMO) return;
+
+    const params = new URLSearchParams();
+    if (codigo) params.set("codigo_barras", codigo);
+    if (sku) params.set("sku", sku);
+    const res = await fetch(`/api/productos/buscar-barcode?${params.toString()}`);
+    if (!res.ok) return;
+    const json = await res.json();
+    const prod = json.producto;
+    if (!prod) return;
+
+    setItems((arr) =>
+      arr.map((x, idx) =>
+        idx === i
+          ? {
+              ...x,
+              status: "EXISTING" as const,
+              producto_id: prod.id,
+              nombre: prod.nombre,
+              sku: prod.sku ?? "",
+              codigo_barras: prod.codigo_barras ?? "",
+              marca: prod.marca ?? "",
+              unidad_medida: prod.unidad_medida,
+              precio_venta: prod.precio_venta,
+            }
+          : x
+      )
+    );
+    toast.success(`Producto encontrado en catálogo: ${prod.nombre}`);
+  }
+
+  async function elegirFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubiendo(true);
+    setPreview(URL.createObjectURL(file));
+    try {
+      const url = DEMO ? URL.createObjectURL(file) : await comprimirYSubirFactura(file);
+      setImagenUrl(url);
+    } catch {
+      toast.error("No se pudo subir la imagen");
+      setPreview(null);
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  function cargarResultado(r: ResultadoProcesarFactura) {
+    setNumeroFactura(r.numero_factura ?? "");
+    setFecha(r.fecha ?? "");
+    setMoneda(r.moneda);
+    setMontoTotal(r.monto_total);
+    setItems(
+      r.items.map((it) => {
+        if (it.status === "EXISTING") {
+          return {
+            status: "EXISTING",
+            producto_id: it.producto_bd.id,
+            nombre: it.producto_bd.nombre,
+            sku: it.producto_bd.sku ?? "",
+            codigo_barras: it.producto_bd.codigo_barras ?? "",
+            cantidad: it.item_ia.cantidad,
+            precio_costo: it.item_ia.precio_costo,
+            precio_venta: it.producto_bd.precio_venta,
+            utilidad_pct: "",
+            catMadre: "",
+            catSub: "",
+            marca: it.producto_bd.marca ?? "",
+            unidad_medida: it.producto_bd.unidad_medida,
+            incluir: true,
+          };
+        }
+        return {
+          status: "NEW",
+          producto_id: null,
+          nombre: it.item_ia.nombre,
+          sku: it.item_ia.sku ?? "",
+          codigo_barras: it.item_ia.codigo_barras ?? "",
+          cantidad: it.item_ia.cantidad,
+          precio_costo: it.item_ia.precio_costo,
+          precio_venta: 0,
+          utilidad_pct: "",
+          catMadre: "",
+          catSub: "",
+          marca: "",
+          unidad_medida: "Unidad",
+          incluir: true,
+        };
+      })
+    );
+    if (proveedorId === "" && !proveedorNuevo && r.proveedor_nombre) {
+      const match = proveedores.find((p) => p.nombre.toLowerCase() === r.proveedor_nombre!.trim().toLowerCase());
+      if (match) setProveedorId(match.id);
+      else setProveedorNuevo(r.proveedor_nombre);
+    }
+  }
+
+  async function procesar() {
+    if (!imagenUrl) {
+      toast.error("Toma o sube la foto de la factura");
+      return;
+    }
+    setVista("procesando");
+
+    if (DEMO) {
+      await new Promise((r) => setTimeout(r, 900));
+      cargarResultado({
+        numero_factura: "F-00123",
+        fecha: new Date().toISOString().slice(0, 10),
+        proveedor_nombre: "Bosch",
+        moneda: "USD",
+        monto_total: 245.5,
+        items: [
+          {
+            status: "NEW",
+            item_ia: { nombre: "Disco de corte 4.5\"", sku: null, codigo_barras: null, cantidad: 20, precio_costo: 1.8 },
+          },
+        ],
+      });
+      setVista("revision");
+      return;
+    }
+
+    const res = await fetch("/api/facturas/procesar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagenUrl }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      toast.error(json.error ?? "Error al procesar la factura");
+      setVista("form");
+      return;
+    }
+    cargarResultado(json as ResultadoProcesarFactura);
+    setVista("revision");
+    guardarBorrador();
+  }
+
+  async function confirmar() {
+    const activos = items.filter((it) => it.incluir);
+    if (activos.length === 0) {
+      toast.error("No hay ítems para registrar");
+      return;
+    }
+
+    if (DEMO) {
+      toast.success("(Demo) Factura registrada");
+      setVista("listo");
+      return;
+    }
+
+    setGuardando(true);
+    const prov = await resolverProveedor(negocioId, proveedores, { proveedorId, nombreNuevo: proveedorNuevo });
+
+    const itemsPayload = [];
+    for (const it of activos) {
+      if (it.status === "EXISTING") {
+        itemsPayload.push({
+          status: "EXISTING" as const,
+          producto_id: it.producto_id,
+          nombre: it.nombre,
+          sku: it.sku || null,
+          codigo_barras: it.codigo_barras || null,
+          cantidad: it.cantidad,
+          precio_costo: it.precio_costo,
+          aplicar_stock: aplicarStock,
+        });
+      } else {
+        const cat = await resolverCatalogos(negocioId, catalogos, {
+          madre: it.catMadre,
+          sub: it.catSub,
+          marca: it.marca,
+          unidad: it.unidad_medida,
+        });
+        itemsPayload.push({
+          status: "NEW" as const,
+          nombre: it.nombre,
+          sku: it.sku || null,
+          codigo_barras: it.codigo_barras || null,
+          categoria: cat.categoria,
+          categoria_id: cat.categoria_id,
+          marca: cat.marca,
+          unidad_medida: cat.unidad_medida,
+          cantidad: it.cantidad,
+          precio_costo: it.precio_costo,
+          precio_venta: it.precio_venta,
+          aplicar_stock: aplicarStock,
+        });
+      }
+    }
+
+    const res = await fetch("/api/facturas/aplicar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        facturaId: facturaIdRef.current,
+        factura: {
+          proveedor_id: prov.proveedor_id,
+          numero_factura: numeroFactura || null,
+          fecha: fecha || null,
+          moneda,
+          monto_total: montoTotal,
+          pagada,
+          imagen_url: imagenUrl,
+        },
+        items: itemsPayload,
+      }),
+    });
+    const json = await res.json();
+    setGuardando(false);
+    if (!res.ok) {
+      toast.error(json.error ?? "Error al registrar la factura");
+      return;
+    }
+    setCreados(json.creados ?? []);
+    toast.success("Factura registrada");
+    const alertas: { nombre: string; costo_anterior: number; costo_nuevo: number; pct: number }[] =
+      json.alertas_costo ?? [];
+    for (const a of alertas) {
+      toast.warning(
+        `⚠️ Subió el costo de "${a.nombre}": $${a.costo_anterior.toFixed(2)} → $${a.costo_nuevo.toFixed(2)} (+${a.pct}%)`,
+        { duration: 8000 }
+      );
+    }
+    router.refresh();
+    setVista("listo");
+  }
+
+  if (vista === "form") {
+    return (
+      <div className="glass rounded-2xl p-4 space-y-4 animate-in-up">
+        <h3 className="font-bold flex items-center gap-2">
+          <FileCheck2 className="h-5 w-5 text-primary" /> Nueva factura de proveedor
+        </h3>
+
+        <SelectorProveedor
+          proveedores={proveedores}
+          proveedorId={proveedorId}
+          nombreNuevo={proveedorNuevo}
+          onChange={(id, nuevo) => {
+            setProveedorId(id);
+            setProveedorNuevo(nuevo);
+          }}
+        />
+
+        <label className="block">
+          <div className="flex items-center justify-center h-44 rounded-xl border-2 border-dashed bg-muted/30 overflow-hidden relative cursor-pointer">
+            {preview ? (
+              <Image src={preview} alt="Vista previa" fill className="object-cover" unoptimized />
+            ) : (
+              <div className="text-center text-muted-foreground">
+                <Camera className="h-8 w-8 mx-auto mb-1" />
+                <span className="text-sm">{subiendo ? "Subiendo…" : "Toca para fotografiar la factura"}</span>
+              </div>
+            )}
+          </div>
+          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={elegirFoto} />
+        </label>
+
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={cancelar} className="flex-1">
+            Cancelar
+          </Button>
+          <Button onClick={procesar} disabled={subiendo || !imagenUrl} className="flex-1">
+            <Sparkles className="mr-2 h-4 w-4" /> Analizar con IA
+          </Button>
+        </div>
+        <button
+          type="button"
+          onClick={cargarManual}
+          className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 flex items-center justify-center gap-1"
+        >
+          <PencilLine className="h-3.5 w-3.5" /> No puedo tomar la foto, cargar los productos manualmente
+        </button>
+      </div>
+    );
+  }
+
+  if (vista === "procesando") {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <Sparkles className="h-8 w-8 animate-pulse mb-2" />
+        <p>Leyendo la factura…</p>
+      </div>
+    );
+  }
+
+  if (vista === "listo") {
+    return (
+      <div className="glass rounded-2xl p-4 space-y-4 animate-in-up">
+        <h3 className="font-bold text-brand-cyan">Factura registrada</h3>
+        {creados.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Productos nuevos creados — imprime la etiqueta y pégala al producto:
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {creados.map((c) => (
+                <EtiquetaBarcode key={c.codigo_barras} nombre={c.nombre} codigo={c.codigo_barras} />
+              ))}
+            </div>
+          </div>
+        )}
+        <Button onClick={onListo} className="w-full">
+          <RotateCcw className="mr-2 h-4 w-4" /> Registrar otra factura
+        </Button>
+      </div>
+    );
+  }
+
+  // --- revisión ---
+  return (
+    <div className="glass rounded-2xl p-4 space-y-4 animate-in-up">
+      <h3 className="font-bold flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-primary" /> Revisa los datos extraídos
+      </h3>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>N° de factura</Label>
+          <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Fecha</Label>
+          <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Moneda</Label>
+          <Select value={moneda} onValueChange={(v) => v && setMoneda(v as "BS" | "USD")}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="BS">Bs</SelectItem>
+              <SelectItem value="USD">USD</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Monto total</Label>
+          <Input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            value={montoTotal}
+            onChange={(e) => setMontoTotal(Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border p-3">
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={pagada} onCheckedChange={(v) => setPagada(!!v)} /> ¿Factura pagada?
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={aplicarStock} onCheckedChange={(v) => setAplicarStock(!!v)} /> Ajustar stock de inventario
+        </label>
+      </div>
+
+      <div className="space-y-3">
+        {items.map((it, i) => (
+          <div key={i} className="rounded-xl border p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  it.status === "EXISTING" ? "bg-brand-cyan/20 text-brand-cyan" : "bg-primary/20 text-primary"
+                }`}
+              >
+                {it.status === "EXISTING" ? "Ya existe" : "Producto nuevo"}
+              </span>
+              <div className="flex items-center gap-1">
+                {it.status === "EXISTING" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setItems((arr) =>
+                        arr.map((x, idx) =>
+                          idx === i ? { ...x, status: "NEW", producto_id: null, precio_venta: 0 } : x
+                        )
+                      )
+                    }
+                  >
+                    No es este, crear nuevo
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Quitar de la factura"
+                  onClick={() => setItem(i, "incluir", !it.incluir)}
+                >
+                  <Trash2 className={`h-4 w-4 ${it.incluir ? "text-destructive" : "text-muted-foreground"}`} />
+                </Button>
+              </div>
+            </div>
+
+            {!it.incluir ? (
+              <p className="text-sm text-muted-foreground italic">Excluido de la factura</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2 space-y-1">
+                  <Label>Nombre</Label>
+                  <Input value={it.nombre} onChange={(e) => setItem(i, "nombre", e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Cantidad</Label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    value={it.cantidad}
+                    onChange={(e) => setItem(i, "cantidad", Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Precio costo</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={it.precio_costo}
+                    onChange={(e) => {
+                      const costo = Number(e.target.value);
+                      setItem(i, "precio_costo", costo);
+                      if (it.status === "NEW") calcularPrecioVentaItem(i, costo, it.utilidad_pct);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>SKU</Label>
+                  <Input
+                    value={it.sku}
+                    onChange={(e) => setItem(i, "sku", e.target.value)}
+                    onBlur={() => it.status === "NEW" && buscarProductoExistente(i)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Código de barras</Label>
+                  <div className="flex gap-1">
+                    <Input
+                      className="flex-1"
+                      value={it.codigo_barras}
+                      onChange={(e) => setItem(i, "codigo_barras", e.target.value)}
+                      onBlur={() => it.status === "NEW" && buscarProductoExistente(i)}
+                      placeholder={it.status === "NEW" ? "Se genera si lo dejas vacío" : ""}
+                    />
+                    {it.status === "NEW" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Generar código"
+                        onClick={() => setItem(i, "codigo_barras", generarCodigoBarrasInterno())}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {it.status === "NEW" && (
+                  <>
+                    <SelectorCategoria
+                      categorias={catalogos.categorias}
+                      madre={it.catMadre}
+                      sub={it.catSub}
+                      onChange={(m, s) => {
+                        setItem(i, "catMadre", m);
+                        setItem(i, "catSub", s);
+                      }}
+                    />
+                    <SelectorCombo
+                      label="Marca"
+                      opciones={catalogos.marcas.map((m) => m.nombre)}
+                      value={it.marca}
+                      onChange={(v) => setItem(i, "marca", v)}
+                    />
+                    <SelectorCombo
+                      label="Unidad"
+                      opciones={catalogos.unidades.map((u) => u.nombre)}
+                      value={it.unidad_medida}
+                      onChange={(v) => setItem(i, "unidad_medida", v)}
+                    />
+                    <div className="space-y-1">
+                      <Label>% Utilidad</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="Ej: 30"
+                        value={it.utilidad_pct}
+                        onChange={(e) => {
+                          const pct = e.target.value === "" ? "" : Number(e.target.value);
+                          setItem(i, "utilidad_pct", pct);
+                          calcularPrecioVentaItem(i, it.precio_costo, pct);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Precio venta (USD)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={it.precio_venta}
+                        onChange={(e) => setItem(i, "precio_venta", Number(e.target.value))}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <Button type="button" variant="outline" onClick={agregarItemManual} className="w-full">
+        <PlusCircle className="mr-2 h-4 w-4" /> Agregar producto manualmente
+      </Button>
+
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={cancelar} className="flex-1">
+          Cancelar
+        </Button>
+        <Button variant="secondary" onClick={guardarYSalirDespues} disabled={guardando} className="flex-1">
+          <Save className="mr-2 h-4 w-4" /> Guardar y continuar después
+        </Button>
+      </div>
+      <Button onClick={confirmar} disabled={guardando} className="w-full">
+        {guardando ? "Guardando…" : "Registrar factura"}
+      </Button>
+    </div>
+  );
+}

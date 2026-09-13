@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSesion } from "@/lib/auth";
 import { GestionUsuarios } from "@/components/usuarios/gestion-usuarios";
+import { ConfigClaveDescuentos } from "@/components/usuarios/config-clave-descuentos";
 
 export default async function UsuariosPage() {
   const sesion = await getSesion();
@@ -15,6 +16,7 @@ export default async function UsuariosPage() {
         </p>
       </div>
       <GestionUsuarios miId={sesion.userId} />
+      <ConfigClaveDescuentos />
     </div>
   );
 }

@@ -2,8 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Refresca la sesión de Supabase en cada request y protege rutas.
-// Rutas públicas: /login y /auth/*.
-const PUBLIC_PATHS = ["/login", "/auth"];
+// Rutas públicas: /login, /auth/* y /entrega/* (portal del repartidor, sin sesión).
+const PUBLIC_PATHS = ["/login", "/auth", "/entrega"];
 
 export async function updateSession(request: NextRequest) {
   // Modo demo: no exige sesión, deja navegar toda la app sin base de datos.

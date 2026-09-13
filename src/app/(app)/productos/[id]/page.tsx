@@ -18,6 +18,13 @@ const ETIQUETA: Record<string, string> = {
   ALTA: "Alta",
 };
 
+interface HistorialCosto {
+  id: string;
+  costo_anterior: number;
+  costo_nuevo: number;
+  created_at: string;
+}
+
 export default async function ProductoDetallePage({
   params,
 }: {
@@ -30,6 +37,7 @@ export default async function ProductoDetallePage({
   let producto: Producto;
   let movimientos: Movimiento[];
   let catalogos: Catalogos = { categorias: [], marcas: [], unidades: [] };
+  let historialCostos: HistorialCosto[] = [];
 
   if (DEMO) {
     const p = demoProductos.find((x) => x.id === id);
@@ -61,6 +69,14 @@ export default async function ProductoDetallePage({
         .eq("producto_id", id)
         .maybeSingle();
       producto.precio_costo = costo?.precio_costo ?? null;
+
+      const { data: hist } = await supabase
+        .from("historial_costos")
+        .select("id, costo_anterior, costo_nuevo, created_at")
+        .eq("producto_id", id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      historialCostos = (hist ?? []) as HistorialCosto[];
     }
 
     const { data: movs } = await supabase
@@ -115,10 +131,8 @@ export default async function ProductoDetallePage({
                 <p className="text-2xl font-bold text-gradient">{formatBs(producto.precio_venta_bs)}</p>
               </div>
               <div className="text-right">
-                <p className="text-[11px] text-muted-foreground">En USD si preguntan</p>
-                <p className="font-semibold text-brand-cyan">
-                  {formatUSD(producto.precio_venta_usd_ajustado)}
-                </p>
+                <p className="text-[11px] text-muted-foreground">Si paga en divisas</p>
+                <p className="font-semibold text-brand-cyan">{formatUSD(producto.precio_venta)}</p>
               </div>
             </div>
           )}
@@ -169,6 +183,41 @@ export default async function ProductoDetallePage({
           )}
         </CardContent>
       </Card>
+
+      {esAdmin && (
+        <Card>
+          <CardContent className="p-4">
+            <h2 className="font-semibold mb-2">Historial de costos</h2>
+            {historialCostos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin cambios de costo registrados.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {historialCostos.map((h) => {
+                  const subio = h.costo_nuevo > h.costo_anterior;
+                  const pct =
+                    h.costo_anterior > 0
+                      ? Math.round(((h.costo_nuevo - h.costo_anterior) / h.costo_anterior) * 1000) / 10
+                      : 0;
+                  return (
+                    <li key={h.id} className="flex items-center justify-between py-2">
+                      <div>
+                        <span className="font-medium">
+                          {formatUSD(h.costo_anterior)} → {formatUSD(h.costo_nuevo)}
+                        </span>
+                        <span className="text-muted-foreground"> · {formatFecha(h.created_at)}</span>
+                      </div>
+                      <span className={subio ? "text-destructive" : "text-emerald-600"}>
+                        {subio ? "+" : ""}
+                        {pct}%
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

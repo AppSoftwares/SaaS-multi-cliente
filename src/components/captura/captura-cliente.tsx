@@ -12,17 +12,19 @@ import { DictadoVoz } from "@/components/captura/dictado-voz";
 import { EscanerBarcode } from "@/components/captura/escaner-barcode";
 import { WizardProducto } from "@/components/wizard-producto";
 import { DEMO, demoProductos } from "@/lib/demo";
-import type { Catalogos, Producto, ResultadoProcesamiento } from "@/lib/types";
+import type { Catalogos, Producto, Proveedor, ResultadoProcesamiento } from "@/lib/types";
 
 type Vista = "inicio" | "foto" | "procesando" | "wizard";
 
 export function CapturaCliente({
   esAdmin,
   catalogos,
+  proveedores,
   negocioId,
 }: {
   esAdmin: boolean;
   catalogos: Catalogos;
+  proveedores: Proveedor[];
   negocioId: string;
 }) {
   const [vista, setVista] = useState<Vista>("inicio");
@@ -234,6 +236,7 @@ export function CapturaCliente({
             esAdmin={esAdmin}
             imagenUrl={imagenUrl}
             catalogos={catalogos}
+            proveedores={proveedores}
             negocioId={negocioId}
             onListo={reiniciar}
           />

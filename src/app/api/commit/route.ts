@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
         precio_venta: Number(p.precio_venta) || 0,
         imagen_url: p.imagen_url || null,
         proveedor: p.proveedor || null,
+        proveedor_id: p.proveedor_id || null,
         ubicacion: p.ubicacion || null,
         created_by: user.id,
       })

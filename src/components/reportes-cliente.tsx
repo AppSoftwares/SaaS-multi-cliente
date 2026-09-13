@@ -17,6 +17,7 @@ export function ReportesCliente() {
   const hoy = new Date().toISOString().slice(0, 10);
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
+  const [diasSinMovimiento, setDiasSinMovimiento] = useState("60");
 
   async function inventarioValorizado() {
     setProc("inv");
@@ -105,6 +106,41 @@ export function ReportesCliente() {
     descargarXlsx(filas, "Movimientos", "movimientos");
   }
 
+  async function inventarioSinMovimiento() {
+    const dias = Math.max(1, Number(diasSinMovimiento) || 60);
+    setProc("sinmov");
+    const desdeCorte = new Date();
+    desdeCorte.setDate(desdeCorte.getDate() - dias);
+
+    const [{ data: movs }, { data: prods }] = await Promise.all([
+      supabase
+        .from("movimientos_inventario")
+        .select("producto_id")
+        .gte("created_at", desdeCorte.toISOString()),
+      supabase
+        .from("productos")
+        .select("id, nombre, categoria, sku, codigo_barras, cantidad, unidad_medida, proveedor")
+        .eq("activo", true)
+        .order("nombre"),
+    ]);
+    setProc(null);
+
+    const conMovimiento = new Set((movs ?? []).map((m) => m.producto_id as string));
+    const filas = ((prods ?? []) as Producto[])
+      .filter((p) => !conMovimiento.has(p.id))
+      .map((p) => ({
+        Nombre: p.nombre,
+        Categoría: p.categoria ?? "",
+        SKU: p.sku ?? "",
+        "Código barras": p.codigo_barras ?? "",
+        Existencia: p.cantidad,
+        Unidad: p.unidad_medida,
+        Proveedor: p.proveedor ?? "",
+      }));
+    if (filas.length === 0) return toast.success(`Todos los productos tuvieron movimiento en los últimos ${dias} días`);
+    descargarXlsx(filas, "Sin movimiento", "inventario_sin_movimiento");
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -138,6 +174,26 @@ export function ReportesCliente() {
           </div>
           <Button onClick={movimientos} disabled={proc === "mov"} className="w-full">
             <Download className="mr-2 h-4 w-4" /> Exportar movimientos
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Inventario sin movimiento</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>Días sin movimiento</Label>
+            <Input
+              type="number"
+              min={1}
+              value={diasSinMovimiento}
+              onChange={(e) => setDiasSinMovimiento(e.target.value)}
+            />
+          </div>
+          <Button onClick={inventarioSinMovimiento} disabled={proc === "sinmov"} className="w-full">
+            <Download className="mr-2 h-4 w-4" /> Exportar inventario "muerto"
           </Button>
         </CardContent>
       </Card>

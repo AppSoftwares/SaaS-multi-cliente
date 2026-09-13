@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BotonSalir } from "@/components/boton-salir";
+import { BotonTema } from "@/components/boton-tema";
 import { Contador } from "@/components/contador";
 import { DEMO, demoKpis, demoProductos } from "@/lib/demo";
-import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree } from "lucide-react";
+import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree, Truck, Landmark, CreditCard } from "lucide-react";
 
 export default async function DashboardPage() {
   const sesion = await getSesion();
@@ -57,8 +58,29 @@ export default async function DashboardPage() {
           <p className="text-xs text-muted-foreground">{sesion?.email}</p>
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            href="/proveedores"
+            className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
+            aria-label="Proveedores"
+          >
+            <Truck className="h-5 w-5" />
+          </Link>
           {esAdmin && (
             <>
+              <Link
+                href="/finanzas"
+                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
+                aria-label="Finanzas"
+              >
+                <Landmark className="h-5 w-5" />
+              </Link>
+              <Link
+                href="/creditos"
+                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
+                aria-label="Créditos a clientes"
+              >
+                <CreditCard className="h-5 w-5" />
+              </Link>
               <Link
                 href="/catalogos"
                 className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
@@ -75,6 +97,7 @@ export default async function DashboardPage() {
               </Link>
             </>
           )}
+          <BotonTema />
           <BotonSalir />
         </div>
       </header>

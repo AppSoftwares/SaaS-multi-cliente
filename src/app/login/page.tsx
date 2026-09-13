@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -52,9 +53,14 @@ export default function LoginPage() {
     <div className="min-h-dvh flex items-center justify-center p-4">
       <Card className="w-full max-w-sm animate-in-up">
         <CardHeader className="items-center text-center">
-          <div className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl gradient-primary text-white glow-purple text-2xl">
-            🛠️
-          </div>
+          <Image
+            src="/logo.jpeg"
+            alt="Logo"
+            width={112}
+            height={56}
+            priority
+            className="mb-1 h-14 w-auto rounded-xl object-contain"
+          />
           <CardTitle className="text-2xl text-gradient">Inventario IA</CardTitle>
           <p className="text-xs text-muted-foreground">Ferretería inteligente</p>
         </CardHeader>

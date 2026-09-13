@@ -46,18 +46,71 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  /* Colores de marca (Rose Industry) para usar directo: bg-brand-purple, text-brand-cyan… */
-  --color-brand-purple: #b44fff;
-  --color-brand-purple-2: #7c2cbf;
-  --color-brand-cyan: #4fe3ff;
-  --color-brand-green: #4fe396;
-  --color-brand-amber: #ffd166;
-  --color-brand-pink: #ff5e7a;
+  /* Colores de marca (Rose Industry) para usar directo: bg-brand-purple, text-brand-cyan…
+     Los valores reales viven en :root/.dark (más abajo) para que se ajusten
+     automáticamente el contraste según el tema. */
+  --color-brand-purple: var(--brand-purple);
+  --color-brand-purple-2: var(--brand-purple-2);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-green: var(--brand-green);
+  --color-brand-amber: var(--brand-amber);
+  --color-brand-pink: var(--brand-pink);
 }
 
-/* Tema oscuro neón fijo (estilo roseindustryve.com) */
+/* Tema claro (por defecto) — mismo morado/cian de marca, ajustado para
+   mantener contraste legible sobre fondo blanco. */
 :root {
+  color-scheme: light;
+  --brand-purple: #8b2fd9;
+  --brand-purple-2: #6b21a8;
+  --brand-cyan: #0891b2;
+  --brand-green: #059669;
+  --brand-amber: #b45309;
+  --brand-pink: #db2777;
+  --background: #faf9fc;
+  --foreground: #1a1030;
+  --card: #ffffff;
+  --card-foreground: #1a1030;
+  --popover: #ffffff;
+  --popover-foreground: #1a1030;
+  --primary: #8b2fd9;
+  --primary-foreground: #ffffff;
+  --secondary: #f1ecfa;
+  --secondary-foreground: #3a1d5c;
+  --muted: #f1eef7;
+  --muted-foreground: #6b6280;
+  --accent: #ece3fb;
+  --accent-foreground: #3a1d5c;
+  --destructive: #d6294a;
+  --border: color-mix(in oklch, #8b2fd9 16%, transparent);
+  --input: color-mix(in oklch, #8b2fd9 22%, transparent);
+  --ring: #8b2fd9;
+  --chart-1: #8b2fd9;
+  --chart-2: #0891b2;
+  --chart-3: #059669;
+  --chart-4: #b45309;
+  --chart-5: #d6294a;
+  --radius: 0.85rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1030;
+  --sidebar-primary: #8b2fd9;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ece3fb;
+  --sidebar-accent-foreground: #3a1d5c;
+  --sidebar-border: color-mix(in oklch, #8b2fd9 16%, transparent);
+  --sidebar-ring: #8b2fd9;
+}
+
+/* Tema oscuro neón (estilo roseindustryve.com) — se activa con la clase
+   .dark que agrega next-themes al <html>. */
+.dark {
   color-scheme: dark;
+  --brand-purple: #b44fff;
+  --brand-purple-2: #7c2cbf;
+  --brand-cyan: #4fe3ff;
+  --brand-green: #4fe396;
+  --brand-amber: #ffd166;
+  --brand-pink: #ff5e7a;
   --background: #060010;
   --foreground: #f0eaff;
   --card: #0d0722;
@@ -104,29 +157,39 @@
     position: relative;
     min-height: 100dvh;
   }
-  /* Rejilla sutil de fondo */
+  /* Rejilla sutil de fondo — muy atenuada en claro para no verse "sucio" */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
     z-index: -2;
     background-image:
-      linear-gradient(color-mix(in oklch, #b44fff 6%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in oklch, #b44fff 6%, transparent) 1px, transparent 1px);
+      linear-gradient(color-mix(in oklch, var(--brand-purple) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklch, var(--brand-purple) 3%, transparent) 1px, transparent 1px);
     background-size: 44px 44px;
     mask-image: radial-gradient(ellipse 100% 80% at 50% 0%, #000 30%, transparent 90%);
   }
-  /* Auras/glows de color (en movimiento lento) */
+  .dark body::before {
+    background-image:
+      linear-gradient(color-mix(in oklch, var(--brand-purple) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklch, var(--brand-purple) 6%, transparent) 1px, transparent 1px);
+  }
+  /* Auras/glows de color (en movimiento lento) — mucho más tenues en claro */
   body::after {
     content: "";
     position: fixed;
     inset: -10%;
     z-index: -3;
     background:
-      radial-gradient(60% 45% at 12% 8%, rgba(180, 79, 255, 0.22), transparent 60%),
-      radial-gradient(55% 45% at 88% 92%, rgba(79, 227, 255, 0.14), transparent 60%);
+      radial-gradient(60% 45% at 12% 8%, color-mix(in oklch, var(--brand-purple) 7%, transparent), transparent 60%),
+      radial-gradient(55% 45% at 88% 92%, color-mix(in oklch, var(--brand-cyan) 6%, transparent), transparent 60%);
     will-change: transform;
     animation: auraFloat 22s ease-in-out infinite alternate;
+  }
+  .dark body::after {
+    background:
+      radial-gradient(60% 45% at 12% 8%, rgba(180, 79, 255, 0.22), transparent 60%),
+      radial-gradient(55% 45% at 88% 92%, rgba(79, 227, 255, 0.14), transparent 60%);
   }
   @media (prefers-reduced-motion: reduce) {
     body::after {
@@ -136,17 +199,22 @@
 }
 
 @layer utilities {
-  /* Texto con degradado morado→cian */
+  /* Texto con degradado morado→cian (usa los tonos ajustados por tema) */
   .text-gradient {
-    background: linear-gradient(90deg, #b44fff, #4fe3ff);
+    background: linear-gradient(90deg, var(--brand-purple), var(--brand-cyan));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
-  /* Superficie "glass" (sólida translúcida, SIN backdrop-filter por rendimiento) */
+  /* Superficie "glass" (sólida translúcida, SIN backdrop-filter por rendimiento).
+     Usa --card para que sea blanca en claro y morado oscuro en oscuro. */
   .glass {
-    background: linear-gradient(180deg, rgba(26, 16, 52, 0.92), rgba(13, 7, 34, 0.92));
-    border: 1px solid color-mix(in oklch, #b44fff 20%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--card) 92%, transparent),
+      color-mix(in oklch, var(--card) 96%, transparent)
+    );
+    border: 1px solid color-mix(in oklch, var(--primary) 20%, transparent);
   }
   .gradient-primary {
     background-image: linear-gradient(135deg, #b44fff, #7c2cbf);
@@ -166,7 +234,7 @@
   }
   .card-glow:hover {
     transform: translateY(-3px);
-    border-color: color-mix(in oklch, #b44fff 55%, transparent);
+    border-color: color-mix(in oklch, var(--brand-purple) 55%, transparent);
     box-shadow: 0 16px 44px -14px rgba(180, 79, 255, 0.6);
   }
   .press {
@@ -224,5 +292,33 @@
   }
   100% {
     transform: translate3d(2%, -3%, 0) scale(1.12);
+  }
+}
+
+/* Impresión de tickets/cierres de caja (80mm) — respaldo cuando no hay
+   impresora térmica ESC/POS disponible por WebUSB/Bluetooth. Solo se ve
+   #ticket-imprimible; el resto de la UI (nav, botones) se oculta. */
+@media print {
+  body::before,
+  body::after {
+    display: none;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #ticket-imprimible,
+  #ticket-imprimible * {
+    visibility: visible;
+  }
+  #ticket-imprimible {
+    position: fixed;
+    inset: 0;
+    width: 80mm;
+    margin: 0;
+    padding: 4mm;
+    box-shadow: none;
+    border: none;
+    background: #fff;
+    color: #000;
   }
 }
