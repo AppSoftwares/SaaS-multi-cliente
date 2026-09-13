@@ -183,17 +183,30 @@ export const demoEntregaItems = [
 
 export function demoArqueo(turno: TurnoCaja): ArqueoTurno {
   const totalVentas = demoVentasPos.reduce((s, v) => s + v.total_bs, 0);
+  const recibidoBs = 1850 + 970.5 + 650 + 320;
+  const recibidoUsd = 2000 / DEMO_BINANCE;
   return {
     turno_id: turno.id,
     monto_apertura_bs: turno.monto_apertura_bs,
+    monto_apertura_usd: turno.monto_apertura_usd,
     monto_cierre_bs: null,
+    monto_cierre_usd: null,
     abierto_at: turno.abierto_at,
     cerrado_at: null,
     estado: "abierto",
     total_ventas_bs: totalVentas,
     ventas: demoVentasPos.length,
-    por_metodo: { Efectivo: 1850, "Pago Móvil": 970.5, Zelle: 2000, "Tarjeta de crédito": 650, "Crédito": 320 },
-    esperado_bs: turno.monto_apertura_bs + totalVentas,
+    por_metodo: [
+      { metodo: "Efectivo", moneda: "BS", monto_moneda: 1850, monto_bs: 1850 },
+      { metodo: "Pago Móvil", moneda: "BS", monto_moneda: 970.5, monto_bs: 970.5 },
+      { metodo: "Zelle", moneda: "USD", monto_moneda: recibidoUsd, monto_bs: 2000 },
+      { metodo: "Tarjeta de crédito", moneda: "BS", monto_moneda: 650, monto_bs: 650 },
+      { metodo: "Crédito", moneda: "BS", monto_moneda: 320, monto_bs: 320 },
+    ],
+    total_recibido_bs: recibidoBs,
+    total_recibido_usd: recibidoUsd,
+    esperado_bs: turno.monto_apertura_bs + recibidoBs,
+    esperado_usd: turno.monto_apertura_usd + recibidoUsd,
     pendiente_por_cobrar_bs: 1180,
   };
 }

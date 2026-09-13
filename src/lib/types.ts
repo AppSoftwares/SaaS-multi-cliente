@@ -204,23 +204,37 @@ export interface TurnoCaja {
   negocio_id: string;
   usuario_id: string;
   monto_apertura_bs: number;
+  monto_apertura_usd: number;
   monto_cierre_bs: number | null;
+  monto_cierre_usd: number | null;
   abierto_at: string;
   cerrado_at: string | null;
   estado: "abierto" | "cerrado";
 }
 
+export interface ArqueoPorMetodo {
+  metodo: string;
+  moneda: MonedaPago;
+  monto_moneda: number;
+  monto_bs: number;
+}
+
 export interface ArqueoTurno {
   turno_id: string;
   monto_apertura_bs: number;
+  monto_apertura_usd: number;
   monto_cierre_bs: number | null;
+  monto_cierre_usd: number | null;
   abierto_at: string;
   cerrado_at: string | null;
   estado: "abierto" | "cerrado";
   total_ventas_bs: number;
   ventas: number;
-  por_metodo: Record<string, number>;
+  por_metodo: ArqueoPorMetodo[];
+  total_recibido_bs: number;
+  total_recibido_usd: number;
   esperado_bs: number;
+  esperado_usd: number;
   pendiente_por_cobrar_bs: number;
 }
 

@@ -115,12 +115,14 @@ export function PosCliente({
   const router = useRouter();
   const [turno, setTurno] = useState<TurnoCaja | null>(turnoInicial);
   const [montoApertura, setMontoApertura] = useState("");
+  const [montoAperturaUsd, setMontoAperturaUsd] = useState("");
   const [abriendoTurno, setAbriendoTurno] = useState(false);
 
   const [dialogCajaAbierto, setDialogCajaAbierto] = useState(false);
   const [arqueo, setArqueo] = useState<ArqueoTurno | null>(null);
   const [cargandoArqueo, setCargandoArqueo] = useState(false);
   const [montoCierre, setMontoCierre] = useState("");
+  const [montoCierreUsd, setMontoCierreUsd] = useState("");
   const [cerrandoTurno, setCerrandoTurno] = useState(false);
 
   const ventaGuardada = useState(() => cargarVentaEnCurso())[0];
@@ -199,10 +201,16 @@ export function PosCliente({
   // (uso interno del cajero, no se recalcula con tasa Binance/BCV).
   const totalUsdRef = carrito.reduce((s, i) => s + i.cantidad * i.precio_venta, 0);
 
+  // Convierte un pago en USD a Bs con tasa_binance: es la misma tasa con la
+  // que se fijó precio_venta_bs (ver recalcular_precios_producto), así el
+  // cuadre de pagos coincide siempre con crear_venta_pos, sin importar
+  // cuánto de la venta se pague en divisa. Usar tasa_bcv aquí (como antes)
+  // generaba un descuadre sistemático: dos tasas distintas para la misma
+  // cuenta.
   function montoALineaBs(p: LineaPago): number {
     const monto = Number(p.monto) || 0;
     if (p.moneda === "USD") {
-      return tasaBcv && tasaBcv > 0 ? Math.round(monto * tasaBcv * 100) / 100 : 0;
+      return tasaBinance && tasaBinance > 0 ? Math.round(monto * tasaBinance * 100) / 100 : 0;
     }
     return monto;
   }
@@ -210,16 +218,19 @@ export function PosCliente({
   const pagosTotalBs = pagos.reduce((s, p) => s + montoALineaBs(p), 0);
   const diferencia = Math.round((totalConImpuestos - pagosTotalBs) * 100) / 100;
   // Al convertir un pago en USD a Bs, medio centavo de dólar (peor caso de
-  // redondeo) ya son varios bolívares con la tasa BCV actual, así que la
+  // redondeo) ya son varios bolívares con la tasa Binance actual, así que la
   // tolerancia escala con la tasa (debe coincidir con crear_venta_pos).
-  const toleranciaPagos = Math.max(0.5, (tasaBcv ?? 0) * 0.01);
+  const toleranciaPagos = Math.max(0.5, (tasaBinance ?? 0) * 0.01);
   const pagosCuadran = Math.abs(diferencia) <= toleranciaPagos;
 
   // IGTF: cobro adicional sobre pagos en divisas, informativo (no afecta el
-  // cuadre de pagos, se declara/reporta aparte). Solo aplica a moneda USD.
+  // cuadre de pagos, se declara/reporta aparte). Base fiscal en tasa_bcv
+  // (independiente de la tasa usada para el cuadre), igual que crear_venta_pos.
   function igtfDeLinea(p: LineaPago): number {
     if (!aplicarIgtf || p.moneda !== "USD") return 0;
-    return Math.round(montoALineaBs(p) * (igtfTasa / 100) * 100) / 100;
+    const monto = Number(p.monto) || 0;
+    if (!tasaBcv || tasaBcv <= 0) return 0;
+    return Math.round(monto * tasaBcv * (igtfTasa / 100) * 100) / 100;
   }
   const igtfTotalBs = pagos.reduce((s, p) => s + igtfDeLinea(p), 0);
   // Equivalencia de la diferencia en divisas, solo para que el cajero pueda
@@ -384,8 +395,8 @@ export function PosCliente({
     const restanteBs = Math.max(0, Math.round((totalConImpuestos - otrosBs) * 100) / 100);
     let monto = restanteBs;
     if (p.moneda === "USD") {
-      if (!tasaBcv || tasaBcv <= 0) return toast.error("No hay tasa BCV configurada");
-      monto = Math.round((restanteBs / tasaBcv) * 100) / 100;
+      if (!tasaBinance || tasaBinance <= 0) return toast.error("No hay tasa Binance configurada");
+      monto = Math.round((restanteBs / tasaBinance) * 100) / 100;
     }
     setPagos((ps) => ps.map((pp, idx) => (idx === i ? { ...pp, monto: String(monto) } : pp)));
   }
@@ -466,6 +477,7 @@ export function PosCliente({
   async function abrirTurno() {
     setAbriendoTurno(true);
     const monto = Number(montoApertura) || 0;
+    const montoUsd = Number(montoAperturaUsd) || 0;
     if (DEMO) {
       await new Promise((r) => setTimeout(r, 300));
       setTurno({
@@ -473,17 +485,23 @@ export function PosCliente({
         negocio_id: "demo-negocio",
         usuario_id: "demo-user",
         monto_apertura_bs: monto,
+        monto_apertura_usd: montoUsd,
         monto_cierre_bs: null,
+        monto_cierre_usd: null,
         abierto_at: new Date().toISOString(),
         cerrado_at: null,
         estado: "abierto",
       });
       setAbriendoTurno(false);
       setMontoApertura("");
+      setMontoAperturaUsd("");
       return toast.success("(Demo) Caja abierta");
     }
     const supabase = createClient();
-    const { data, error } = await supabase.rpc("abrir_turno", { p_monto_apertura: monto });
+    const { data, error } = await supabase.rpc("abrir_turno", {
+      p_monto_apertura: monto,
+      p_monto_apertura_usd: montoUsd,
+    });
     setAbriendoTurno(false);
     if (error) return toast.error(error.message);
     const turnoId = (data as { turno_id: string }).turno_id;
@@ -492,12 +510,15 @@ export function PosCliente({
       negocio_id: "",
       usuario_id: "",
       monto_apertura_bs: monto,
+      monto_apertura_usd: montoUsd,
       monto_cierre_bs: null,
+      monto_cierre_usd: null,
       abierto_at: new Date().toISOString(),
       cerrado_at: null,
       estado: "abierto",
     });
     setMontoApertura("");
+    setMontoAperturaUsd("");
     toast.success("Caja abierta");
   }
 
@@ -522,9 +543,14 @@ export function PosCliente({
     if (!turno) return;
     setCerrandoTurno(true);
     const monto = Number(montoCierre) || 0;
+    const montoUsd = Number(montoCierreUsd) || 0;
     if (DEMO) {
       await new Promise((r) => setTimeout(r, 300));
-      setArqueo((a) => (a ? { ...a, monto_cierre_bs: monto, estado: "cerrado", cerrado_at: new Date().toISOString() } : a));
+      setArqueo((a) =>
+        a
+          ? { ...a, monto_cierre_bs: monto, monto_cierre_usd: montoUsd, estado: "cerrado", cerrado_at: new Date().toISOString() }
+          : a
+      );
       setCerrandoTurno(false);
       setTurno(null);
       return toast.success("(Demo) Caja cerrada");
@@ -533,6 +559,7 @@ export function PosCliente({
     const { data, error } = await supabase.rpc("cerrar_turno", {
       p_turno_id: turno.id,
       p_monto_cierre: monto,
+      p_monto_cierre_usd: montoUsd,
     });
     setCerrandoTurno(false);
     if (error) return toast.error(error.message);
@@ -546,6 +573,7 @@ export function PosCliente({
     setDialogCajaAbierto(false);
     setArqueo(null);
     setMontoCierre("");
+    setMontoCierreUsd("");
   }
 
   // --- Confirmación + ticket (tras cobrar) ---
@@ -630,19 +658,33 @@ export function PosCliente({
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Registra el monto inicial en efectivo (Bs) para abrir tu turno de caja.
+              Registra el monto inicial físico en bolívares y en divisa para abrir tu turno de caja.
             </p>
-            <div className="space-y-1">
-              <Label>Monto de apertura (Bs)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                value={montoApertura}
-                onChange={(e) => setMontoApertura(e.target.value)}
-                placeholder="0.00"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Apertura en Bs</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={montoApertura}
+                  onChange={(e) => setMontoApertura(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Apertura en $</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={montoAperturaUsd}
+                  onChange={(e) => setMontoAperturaUsd(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <Button onClick={abrirTurno} disabled={abriendoTurno} className="w-full h-11">
               {abriendoTurno ? "Abriendo…" : "Abrir caja"}
@@ -665,6 +707,7 @@ export function PosCliente({
       <div className="flex items-center justify-between gap-2 -mt-2">
         <p className="text-xs text-muted-foreground">
           Turno abierto {formatFecha(turno.abierto_at)} · Apertura: {formatBs(turno.monto_apertura_bs)}
+          {turno.monto_apertura_usd > 0 && <> + {formatUSD(turno.monto_apertura_usd)}</>}
         </p>
         <div className="flex items-center gap-3 shrink-0 text-xs">
           <Link href="/pos/cotizacion" className="text-brand-cyan font-medium">
@@ -1087,12 +1130,20 @@ export function PosCliente({
             <div id="ticket-imprimible" className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Apertura</span>
-                <span className="font-medium">{formatBs(arqueo.monto_apertura_bs)}</span>
+                <span className="font-medium">
+                  {formatBs(arqueo.monto_apertura_bs)}
+                  {arqueo.monto_apertura_usd > 0 && <> + {formatUSD(arqueo.monto_apertura_usd)}</>}
+                </span>
               </div>
-              {Object.entries(arqueo.por_metodo).map(([metodo, monto]) => (
-                <div key={metodo} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{metodo}</span>
-                  <span className="font-medium">{formatBs(monto)}</span>
+              {/* Desglose por método en la moneda en que efectivamente se
+                  cobró (no todo convertido a Bs): así el cajero no tiene que
+                  dividir nada a mano para validar su cierre. */}
+              {arqueo.por_metodo.map((m, i) => (
+                <div key={`${m.metodo}-${m.moneda}-${i}`} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{m.metodo}</span>
+                  <span className="font-medium">
+                    {m.moneda === "USD" ? formatUSD(m.monto_moneda) : formatBs(m.monto_moneda)}
+                  </span>
                 </div>
               ))}
               <div className="border-t border-border/50 pt-2 flex items-center justify-between font-semibold">
@@ -1100,8 +1151,12 @@ export function PosCliente({
                 <span>{formatBs(arqueo.total_ventas_bs)}</span>
               </div>
               <div className="flex items-center justify-between font-bold">
-                <span>Esperado en caja</span>
+                <span>Esperado en Bs</span>
                 <span className="text-gradient">{formatBs(arqueo.esperado_bs)}</span>
+              </div>
+              <div className="flex items-center justify-between font-bold">
+                <span>Esperado en $</span>
+                <span className="text-gradient">{formatUSD(arqueo.esperado_usd)}</span>
               </div>
               {arqueo.pendiente_por_cobrar_bs > 0 && (
                 <div className="flex items-center justify-between text-amber-600">
@@ -1113,11 +1168,11 @@ export function PosCliente({
               {arqueo.estado === "cerrado" ? (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Contado</span>
+                    <span className="text-muted-foreground">Contado en Bs</span>
                     <span className="font-medium">{formatBs(arqueo.monto_cierre_bs ?? 0)}</span>
                   </div>
                   <div className="flex items-center justify-between font-bold">
-                    <span>Diferencia</span>
+                    <span>Diferencia Bs</span>
                     <span
                       className={
                         Math.abs((arqueo.monto_cierre_bs ?? 0) - arqueo.esperado_bs) < 0.5
@@ -1128,19 +1183,49 @@ export function PosCliente({
                       {formatBs((arqueo.monto_cierre_bs ?? 0) - arqueo.esperado_bs)}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Contado en $</span>
+                    <span className="font-medium">{formatUSD(arqueo.monto_cierre_usd ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-bold">
+                    <span>Diferencia $</span>
+                    <span
+                      className={
+                        Math.abs((arqueo.monto_cierre_usd ?? 0) - arqueo.esperado_usd) < 0.05
+                          ? "text-emerald-600"
+                          : "text-destructive"
+                      }
+                    >
+                      {formatUSD((arqueo.monto_cierre_usd ?? 0) - arqueo.esperado_usd)}
+                    </span>
+                  </div>
                 </>
               ) : (
-                <div className="space-y-1 pt-2 print:hidden">
-                  <Label>Monto contado (Bs)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={montoCierre}
-                    onChange={(e) => setMontoCierre(e.target.value)}
-                    placeholder="0.00"
-                  />
+                <div className="grid grid-cols-2 gap-3 pt-2 print:hidden">
+                  <div className="space-y-1">
+                    <Label>Monto contado (Bs)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={montoCierre}
+                      onChange={(e) => setMontoCierre(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Monto contado ($)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={montoCierreUsd}
+                      onChange={(e) => setMontoCierreUsd(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
               )}
             </div>
