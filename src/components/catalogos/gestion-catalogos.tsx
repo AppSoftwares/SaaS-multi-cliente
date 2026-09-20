@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { DEMO, demoCatalogos } from "@/lib/demo";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,13 @@ import { toast } from "sonner";
 import { Plus, Trash2, FolderTree, Tag, Ruler } from "lucide-react";
 import type { Categoria, OpcionCatalogo } from "@/lib/types";
 
-export function GestionCatalogos({ negocioId }: { negocioId: string }) {
+export interface ConteosCatalogo {
+  categoria: Record<string, number>;
+  marca: Record<string, number>;
+  unidad: Record<string, number>;
+}
+
+export function GestionCatalogos({ negocioId, conteos }: { negocioId: string; conteos: ConteosCatalogo }) {
   const supabase = createClient();
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [marcas, setMarcas] = useState<OpcionCatalogo[]>([]);
@@ -106,7 +113,21 @@ export function GestionCatalogos({ negocioId }: { negocioId: string }) {
           <Card key={m.id}>
             <CardContent className="p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="font-semibold">{m.nombre}</p>
+                <Link
+                  href={`/productos?cat=${m.id}`}
+                  className="font-semibold hover:text-primary"
+                  title={`Ver los productos de ${m.nombre}`}
+                >
+                  {m.nombre}{" "}
+                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                    ·{" "}
+                    {(conteos.categoria[m.id] ?? 0) +
+                      categorias
+                        .filter((c) => c.parent_id === m.id)
+                        .reduce((n, c) => n + (conteos.categoria[c.id] ?? 0), 0)}{" "}
+                    productos
+                  </span>
+                </Link>
                 <Button variant="ghost" size="icon" onClick={() => eliminarSimple("categorias", m.id)}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
@@ -116,7 +137,13 @@ export function GestionCatalogos({ negocioId }: { negocioId: string }) {
                   .filter((c) => c.parent_id === m.id)
                   .map((s) => (
                     <Badge key={s.id} variant="secondary" className="gap-1">
-                      {s.nombre}
+                      <Link
+                        href={`/productos?cat=${s.id}`}
+                        title={`Ver los productos de ${s.nombre}`}
+                        className="hover:text-primary"
+                      >
+                        {s.nombre} · {conteos.categoria[s.id] ?? 0}
+                      </Link>
                       <button onClick={() => eliminarSimple("categorias", s.id)} aria-label="Eliminar">
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </button>
@@ -132,13 +159,23 @@ export function GestionCatalogos({ negocioId }: { negocioId: string }) {
       {/* MARCAS */}
       <TabsContent value="marcas" className="space-y-3 pt-3">
         <AgregarInline placeholder="Nueva marca…" onAdd={(v) => agregarSimple("marcas", v)} />
-        <ListaChips items={marcas} onDelete={(id) => eliminarSimple("marcas", id)} />
+        <ListaChips
+          items={marcas}
+          onDelete={(id) => eliminarSimple("marcas", id)}
+          hrefDe={(i) => `/productos?marca=${encodeURIComponent(i.nombre)}`}
+          conteoDe={(i) => conteos.marca[i.nombre] ?? 0}
+        />
       </TabsContent>
 
       {/* UNIDADES */}
       <TabsContent value="unidades" className="space-y-3 pt-3">
         <AgregarInline placeholder="Nueva unidad…" onAdd={(v) => agregarSimple("unidades", v)} />
-        <ListaChips items={unidades} onDelete={(id) => eliminarSimple("unidades", id)} />
+        <ListaChips
+          items={unidades}
+          onDelete={(id) => eliminarSimple("unidades", id)}
+          hrefDe={(i) => `/productos?unidad=${encodeURIComponent(i.nombre)}`}
+          conteoDe={(i) => conteos.unidad[i.nombre] ?? 0}
+        />
       </TabsContent>
     </Tabs>
   );
@@ -179,9 +216,13 @@ function AgregarInline({
 function ListaChips({
   items,
   onDelete,
+  hrefDe,
+  conteoDe,
 }: {
   items: OpcionCatalogo[];
   onDelete: (id: string) => void;
+  hrefDe: (i: OpcionCatalogo) => string;
+  conteoDe: (i: OpcionCatalogo) => number;
 }) {
   return (
     <Card>
@@ -191,7 +232,9 @@ function ListaChips({
         ) : (
           items.map((i) => (
             <Badge key={i.id} variant="secondary" className="gap-1">
-              {i.nombre}
+              <Link href={hrefDe(i)} title={`Ver los productos de ${i.nombre}`} className="hover:text-primary">
+                {i.nombre} · {conteoDe(i)}
+              </Link>
               <button onClick={() => onDelete(i.id)} aria-label="Eliminar">
                 <Trash2 className="h-3 w-3 text-destructive" />
               </button>

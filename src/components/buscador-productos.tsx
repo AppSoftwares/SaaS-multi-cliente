@@ -5,19 +5,28 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
-// Búsqueda con debounce que sincroniza el término en la URL (?q=).
+// Búsqueda con debounce que sincroniza el término en la URL (?q=) sin perder
+// los demás filtros (categoría, marca, sin precio…); al buscar vuelve a la página 1.
 export function BuscadorProductos() {
   const router = useRouter();
   const params = useSearchParams();
-  const [valor, setValor] = useState(params.get("q") ?? "");
+  const qActual = params.get("q") ?? "";
+  const [valor, setValor] = useState(qActual);
 
   useEffect(() => {
+    const q = valor.trim();
+    if (q === qActual) return;
     const t = setTimeout(() => {
-      const q = valor.trim();
-      router.replace(q ? `/productos?q=${encodeURIComponent(q)}` : "/productos");
+      const next = new URLSearchParams(params.toString());
+      if (q) next.set("q", q);
+      else next.delete("q");
+      next.delete("p");
+      const s = next.toString();
+      router.replace(s ? `/productos?${s}` : "/productos");
     }, 300);
     return () => clearTimeout(t);
-  }, [valor, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valor]);
 
   return (
     <div className="relative">

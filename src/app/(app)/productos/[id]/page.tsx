@@ -27,10 +27,15 @@ interface HistorialCosto {
 
 export default async function ProductoDetallePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
+  // Solo se acepta volver a la propia lista de productos (evita redirecciones abiertas).
+  const volverA = from && from.startsWith("/productos") && !from.startsWith("//") ? from : "/productos";
   const sesion = await getSesion();
   const esAdmin = sesion?.rol === "ADMIN";
 
@@ -97,7 +102,7 @@ export default async function ProductoDetallePage({
 
   return (
     <div className="space-y-4 animate-in-up">
-      <Link href="/productos" className="inline-flex items-center text-sm text-muted-foreground">
+      <Link href={volverA} className="inline-flex items-center text-sm text-muted-foreground">
         <ArrowLeft className="mr-1 h-4 w-4" /> Productos
       </Link>
 

@@ -1,6 +1,20 @@
 import { createClient } from "@/lib/supabase/client";
 import { DEMO } from "@/lib/demo";
-import type { Catalogos, Proveedor } from "@/lib/types";
+import type { Catalogos, Categoria, Proveedor } from "@/lib/types";
+
+// Deriva madre/sub desde el categoria_id guardado en el producto.
+export function derivarCategoria(
+  cats: Categoria[],
+  categoriaId: string | null
+): { madre: string; sub: string } {
+  const c = categoriaId ? cats.find((x) => x.id === categoriaId) : null;
+  if (!c) return { madre: "", sub: "" };
+  if (c.parent_id) {
+    const m = cats.find((x) => x.id === c.parent_id);
+    return { madre: m?.nombre ?? "", sub: c.nombre };
+  }
+  return { madre: c.nombre, sub: "" };
+}
 
 interface Entrada {
   madre: string;
