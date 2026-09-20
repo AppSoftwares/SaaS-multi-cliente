@@ -16,6 +16,8 @@ export function VistaTicket({
   totalBs,
   ivaBs,
   igtfBs,
+  deliveryBs,
+  direccionEntrega,
   clienteCedula,
   clienteNombre,
   clienteApellido,
@@ -35,6 +37,8 @@ export function VistaTicket({
   totalBs: number;
   ivaBs?: number | null;
   igtfBs?: number | null;
+  deliveryBs?: number | null;
+  direccionEntrega?: string | null;
   clienteCedula?: string | null;
   clienteNombre?: string | null;
   clienteApellido?: string | null;
@@ -45,6 +49,7 @@ export function VistaTicket({
   const hayDescuento = !!descuentoBs && descuentoBs > 0;
   const hayIva = !!ivaBs && ivaBs > 0;
   const hayIgtf = !!igtfBs && igtfBs > 0;
+  const hayDelivery = !!deliveryBs && deliveryBs > 0;
   const lineas = construirLineas();
 
   function construirLineas(): string[] {
@@ -65,6 +70,10 @@ export function VistaTicket({
       l.push(`Descuento: -${formatBs(descuentoBs)}`);
     }
     if (hayIva) l.push(`IVA: ${formatBs(ivaBs)}`);
+    if (hayDelivery) {
+      l.push(`Delivery: ${formatBs(deliveryBs)}`);
+      if (direccionEntrega) l.push(`Entrega en: ${direccionEntrega}`);
+    }
     l.push(`TOTAL: ${formatBs(totalBs)}`);
     // El desglose por método de pago (Binance, Zelle, Efectivo, etc.) es de uso
     // interno: no debe salir en el ticket físico que recibe el cliente, solo
@@ -129,6 +138,15 @@ export function VistaTicket({
               <span>IVA</span>
               <span>{formatBs(ivaBs)}</span>
             </div>
+          )}
+          {hayDelivery && (
+            <>
+              <div className="flex justify-between text-xs">
+                <span>Delivery</span>
+                <span>{formatBs(deliveryBs)}</span>
+              </div>
+              {direccionEntrega && <p className="text-[11px] text-muted-foreground">Entrega en: {direccionEntrega}</p>}
+            </>
           )}
           <div className="flex justify-between font-bold">
             <span>TOTAL</span>

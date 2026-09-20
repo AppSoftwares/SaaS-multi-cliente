@@ -27,6 +27,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     | "cliente_apellido"
     | "cliente_direccion"
     | "cliente_telefono"
+    | "costo_delivery"
+    | "direccion"
   >;
   let items: Pick<
     PedidoItem,
@@ -52,6 +54,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       cliente_apellido: null,
       cliente_direccion: null,
       cliente_telefono: null,
+      costo_delivery: 0,
+      direccion: null,
     };
     items = [
       {
@@ -69,7 +73,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     const { data } = await supabase
       .from("pedidos")
       .select(
-        "id, numero_venta, subtotal_bs, descuento_monto_bs, total_bs, iva_monto_bs, igtf_monto_bs, created_at, cliente_cedula, cliente_nombre, cliente_apellido, cliente_direccion, cliente_telefono"
+        "id, numero_venta, subtotal_bs, descuento_monto_bs, total_bs, iva_monto_bs, igtf_monto_bs, created_at, cliente_cedula, cliente_nombre, cliente_apellido, cliente_direccion, cliente_telefono, costo_delivery, direccion"
       )
       .eq("id", id)
       .maybeSingle();
@@ -105,6 +109,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         totalBs={pedido.total_bs}
         ivaBs={pedido.iva_monto_bs}
         igtfBs={pedido.igtf_monto_bs}
+        deliveryBs={pedido.costo_delivery}
+        direccionEntrega={pedido.direccion}
         clienteCedula={pedido.cliente_cedula}
         clienteNombre={pedido.cliente_nombre}
         clienteApellido={pedido.cliente_apellido}

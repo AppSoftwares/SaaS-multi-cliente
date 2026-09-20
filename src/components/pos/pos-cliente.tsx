@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Camera, Plus, Minus, X, AlertTriangle, Percent, Lock, Printer } from "lucide-react";
+import { Camera, Plus, Minus, X, AlertTriangle, Percent, Lock, Printer, Truck } from "lucide-react";
 import { formatBs, formatUSD, formatFecha } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useLectorPistola } from "@/hooks/usar-lector-pistola";
@@ -66,6 +66,7 @@ interface VentaEnCurso {
   descuentoGeneral: { tipo: TipoDescuento; valor: number } | null;
   aplicarIva: boolean;
   aplicarIgtf: boolean;
+  delivery?: { activo: boolean; usd: string; direccion: string };
 }
 
 const VENTA_EN_CURSO_KEY = "pos_venta_en_curso";
@@ -151,6 +152,13 @@ export function PosCliente({
   const [aplicarIva, setAplicarIva] = useState(() => ventaGuardada?.aplicarIva ?? false);
   const [aplicarIgtf, setAplicarIgtf] = useState(() => ventaGuardada?.aplicarIgtf ?? false);
 
+  // Delivery: el cliente pide que le lleven la mercancía. El costo se escribe
+  // en USD y se suma al total a cobrar (convertido con tasa Binance, la misma
+  // que fija los precios en Bs).
+  const [deliveryActivo, setDeliveryActivo] = useState(() => ventaGuardada?.delivery?.activo ?? false);
+  const [deliveryUsd, setDeliveryUsd] = useState(() => ventaGuardada?.delivery?.usd ?? "");
+  const [deliveryDireccion, setDeliveryDireccion] = useState(() => ventaGuardada?.delivery?.direccion ?? "");
+
   // Guarda la venta en curso en sessionStorage para sobrevivir a la navegación
   // entre pestañas (Caja -> Historial/Productos -> Caja) sin perder el carrito.
   useEffect(() => {
@@ -171,9 +179,10 @@ export function PosCliente({
       descuentoGeneral,
       aplicarIva,
       aplicarIgtf,
+      delivery: { activo: deliveryActivo, usd: deliveryUsd, direccion: deliveryDireccion },
     };
     window.sessionStorage.setItem(VENTA_EN_CURSO_KEY, JSON.stringify(datos));
-  }, [carrito, pagos, clienteTipoDoc, clienteNumeroDoc, clienteNombre, clienteApellido, clienteTelefono, clienteDireccion, descuentoGeneral, aplicarIva, aplicarIgtf]);
+  }, [carrito, pagos, clienteTipoDoc, clienteNumeroDoc, clienteNombre, clienteApellido, clienteTelefono, clienteDireccion, descuentoGeneral, aplicarIva, aplicarIgtf, deliveryActivo, deliveryUsd, deliveryDireccion]);
 
   // --- Cálculo de totales (replica la lógica de crear_venta_pos) ---
   const itemsCalc = carrito.map((i) => {
@@ -190,16 +199,20 @@ export function PosCliente({
   // Base imponible: la venta ya con descuentos, antes de impuestos.
   const totalBs = baseGeneral - descGeneralBs;
   const ivaBs = aplicarIva ? Math.round(totalBs * (ivaTasa / 100) * 100) / 100 : 0;
-  // Total a cobrar (mercancía + IVA). El IGTF NO se suma aquí: es un cobro
-  // adicional sobre el pago en divisas, no parte del precio de la venta.
-  const totalConImpuestos = totalBs + ivaBs;
+  // Delivery: monto en USD -> Bs con tasa Binance. No lleva IVA.
+  const deliveryUsdNum = deliveryActivo ? Math.max(0, Number(deliveryUsd) || 0) : 0;
+  const deliveryBs =
+    deliveryActivo && tasaBinance && tasaBinance > 0 ? Math.round(deliveryUsdNum * tasaBinance * 100) / 100 : 0;
+  // Total a cobrar (mercancía + IVA + delivery). El IGTF NO se suma aquí: es un
+  // cobro adicional sobre el pago en divisas, no parte del precio de la venta.
+  const totalConImpuestos = totalBs + ivaBs + deliveryBs;
 
   const clienteCedula = clienteNumeroDoc.trim() ? `${clienteTipoDoc}-${clienteNumeroDoc.trim()}` : "";
   const requiereCliente = pagos.some((p) => p.metodo === "Crédito");
 
   // Referencia en divisas = precio_venta tal cual está cargado en el inventario
   // (uso interno del cajero, no se recalcula con tasa Binance/BCV).
-  const totalUsdRef = carrito.reduce((s, i) => s + i.cantidad * i.precio_venta, 0);
+  const totalUsdRef = carrito.reduce((s, i) => s + i.cantidad * i.precio_venta, 0) + deliveryUsdNum;
 
   // Convierte un pago en USD a Bs con tasa_binance: es la misma tasa con la
   // que se fijó precio_venta_bs (ver recalcular_precios_producto), así el
@@ -408,6 +421,13 @@ export function PosCliente({
     if (pagos.some((p) => p.metodo === "Crédito") && !clienteCedula.trim()) {
       return toast.error("Identifica al cliente (cédula) para una venta a crédito");
     }
+    if (deliveryActivo) {
+      if (!tasaBinance || tasaBinance <= 0) return toast.error("No hay tasa Binance configurada para el delivery");
+      if (deliveryUsd.trim() === "") return toast.error("Indica el monto del delivery (0 si es gratis)");
+      if (!(deliveryDireccion.trim() || clienteDireccion.trim())) {
+        return toast.error("Indica la dirección de entrega del delivery");
+      }
+    }
 
     setCobrando(true);
     if (DEMO) {
@@ -422,6 +442,7 @@ export function PosCliente({
         base_imponible_bs: totalBs,
         iva_monto_bs: ivaBs,
         igtf_monto_bs: igtfTotalBs,
+        delivery_monto_bs: deliveryBs,
       });
       return toast.success("(Demo) Venta registrada");
     }
@@ -451,6 +472,15 @@ export function PosCliente({
       p_turno_id: turno?.id ?? null,
       p_aplica_iva: aplicarIva,
       p_aplica_igtf: aplicarIgtf,
+      // Solo se envían con delivery activo: una venta normal usa exactamente
+      // los mismos parámetros de siempre.
+      ...(deliveryActivo
+        ? {
+            p_tipo_entrega: "delivery",
+            p_costo_delivery_usd: deliveryUsdNum,
+            p_direccion_entrega: (deliveryDireccion.trim() || clienteDireccion.trim()) || null,
+          }
+        : {}),
     });
     setCobrando(false);
     if (error) return toast.error(error.message);
@@ -471,6 +501,9 @@ export function PosCliente({
     setClaveDescuentos(null);
     setAplicarIva(false);
     setAplicarIgtf(false);
+    setDeliveryActivo(false);
+    setDeliveryUsd("");
+    setDeliveryDireccion("");
     setResultado(null);
   }
 
@@ -626,6 +659,8 @@ export function PosCliente({
           totalBs={resultado.total_bs}
           ivaBs={resultado.iva_monto_bs}
           igtfBs={resultado.igtf_monto_bs}
+          deliveryBs={resultado.delivery_monto_bs}
+          direccionEntrega={deliveryActivo ? deliveryDireccion.trim() || clienteDireccion.trim() || null : null}
           clienteCedula={clienteCedula || null}
           clienteNombre={clienteNombre || null}
           clienteApellido={clienteApellido || null}
@@ -921,6 +956,56 @@ export function PosCliente({
             >
               {aplicarIgtf ? "Activado" : "Aplicar IGTF"}
             </button>
+          </div>
+
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground inline-flex items-center gap-1">
+                <Truck className="h-4 w-4" /> Delivery
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deliveryActivo && !deliveryDireccion) setDeliveryDireccion(clienteDireccion);
+                  setDeliveryActivo((v) => !v);
+                }}
+                className={cn(
+                  "text-xs font-medium px-2 py-1 rounded-md border transition-colors",
+                  deliveryActivo
+                    ? "border-brand-cyan bg-brand-cyan/10 text-brand-cyan"
+                    : "border-border text-muted-foreground"
+                )}
+              >
+                {deliveryActivo ? `Aplicado: ${formatBs(deliveryBs)}` : "Agregar delivery"}
+              </button>
+            </div>
+            {deliveryActivo && (
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/40 p-2">
+                <div className="space-y-1">
+                  <Label>Costo del delivery ($)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={deliveryUsd}
+                    onChange={(e) => setDeliveryUsd(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Dirección de entrega</Label>
+                  <Input
+                    value={deliveryDireccion}
+                    onChange={(e) => setDeliveryDireccion(e.target.value)}
+                    placeholder={clienteDireccion || "Barrio, calle, referencia"}
+                  />
+                </div>
+                <p className="col-span-2 text-[11px] text-muted-foreground">
+                  Se suma al total a cobrar (según distancia y mercancía). No lleva IVA y sale en el ticket.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-border/40">

@@ -104,6 +104,9 @@ export interface Pedido {
   total_bs: number;
   total_usd: number;
   metodo_pago: string | null;
+  tipo_entrega?: "delivery" | "retiro" | null;
+  costo_delivery?: number;
+  direccion?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +134,7 @@ export interface ResultadoVentaPos {
   base_imponible_bs: number;
   iva_monto_bs: number;
   igtf_monto_bs: number;
+  delivery_monto_bs: number;
 }
 
 export interface MetodoPago {
