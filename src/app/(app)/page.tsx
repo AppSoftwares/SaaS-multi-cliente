@@ -51,55 +51,40 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-5 animate-in-up">
-      <header className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-brand-cyan/80">Panel</p>
-          <h1 className="text-2xl font-bold text-gradient">Mi Ferretería</h1>
-          <p className="text-xs text-muted-foreground">{sesion?.email}</p>
+      <header className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.jpeg" alt="Joel Ferretería" className="h-12 w-auto max-w-[140px] object-contain shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-widest text-brand-cyan/80">Panel</p>
+              <p className="text-xs text-muted-foreground truncate">{sesion?.email}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span title="Cambiar tema claro/oscuro">
+              <BotonTema />
+            </span>
+            <span title="Cerrar sesión">
+              <BotonSalir />
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Link
-            href="/proveedores"
-            className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
-            aria-label="Proveedores"
-          >
-            <Truck className="h-5 w-5" />
-          </Link>
+        <nav className="flex flex-wrap gap-2" aria-label="Accesos">
+          <Acceso href="/proveedores" label="Proveedores y facturas" icon={<Truck className="h-4 w-4" />} />
           {esAdmin && (
             <>
-              <Link
-                href="/finanzas"
-                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
-                aria-label="Finanzas"
-              >
-                <Landmark className="h-5 w-5" />
-              </Link>
-              <Link
-                href="/creditos"
-                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
-                aria-label="Créditos a clientes"
-              >
-                <CreditCard className="h-5 w-5" />
-              </Link>
-              <Link
+              <Acceso href="/finanzas" label="Finanzas" icon={<Landmark className="h-4 w-4" />} />
+              <Acceso href="/creditos" label="Créditos a clientes" icon={<CreditCard className="h-4 w-4" />} />
+              <Acceso
                 href="/catalogos"
-                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
-                aria-label="Catálogos"
-              >
-                <FolderTree className="h-5 w-5" />
-              </Link>
-              <Link
-                href="/usuarios"
-                className={buttonVariants({ variant: "ghost", size: "icon", className: "" })}
-                aria-label="Usuarios"
-              >
-                <Users className="h-5 w-5" />
-              </Link>
+                label="Categorías, marcas y unidades"
+                icon={<FolderTree className="h-4 w-4" />}
+              />
+              <Acceso href="/usuarios" label="Usuarios" icon={<Users className="h-4 w-4" />} />
             </>
           )}
-          <BotonTema />
-          <BotonSalir />
-        </div>
+        </nav>
       </header>
 
       {/* KPIs */}
@@ -180,6 +165,20 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function Acceso({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      title={label}
+      aria-label={label}
+      className={buttonVariants({ variant: "outline", size: "sm", className: "h-9 gap-1.5 text-xs" })}
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }
 

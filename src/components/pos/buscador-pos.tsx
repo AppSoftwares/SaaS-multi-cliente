@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { DEMO, demoProductos } from "@/lib/demo";
 import { Input } from "@/components/ui/input";
 import { Search, Package } from "lucide-react";
-import { escapeLike } from "@/lib/utils";
-import { formatBs } from "@/lib/format";
+import { filtrosBusqueda, coincidePalabras } from "@/lib/utils";
+import { formatBs, formatUSD } from "@/lib/format";
 import type { ProductoPos } from "@/lib/types";
 
 // Búsqueda por nombre/SKU/código para agregar al carrito del POS. Estado
@@ -29,26 +29,19 @@ export function BuscadorPos({ onSeleccionar }: { onSeleccionar: (p: ProductoPos)
         const q = t.toLowerCase();
         setResultados(
           demoProductos
-            .filter(
-              (p) =>
-                p.nombre.toLowerCase().includes(q) ||
-                (p.sku ?? "").toLowerCase().includes(q) ||
-                (p.codigo_barras ?? "").toLowerCase().includes(q)
-            )
-            .slice(0, 8)
+            .filter((p) => coincidePalabras(`${p.nombre} ${p.sku ?? ""} ${p.codigo_barras ?? ""}`, q))
+            .slice(0, 40)
         );
       } else {
         const supabase = createClient();
-        const like = escapeLike(t);
-        const { data } = await supabase
+        let query = supabase
           .from("productos")
           .select(
             "id, nombre, codigo_barras, unidad_medida, cantidad, stock_minimo, precio_venta, precio_venta_bs, precio_venta_usd_ajustado, activo"
           )
-          .eq("activo", true)
-          .or(`nombre.ilike.%${like}%,sku.ilike.%${like}%,codigo_barras.ilike.%${like}%`)
-          .order("nombre")
-          .limit(8);
+          .eq("activo", true);
+        for (const f of filtrosBusqueda(t)) query = query.or(f);
+        const { data } = await query.order("nombre").limit(40);
         setResultados(((data ?? []) as ProductoPos[]));
       }
       setBuscando(false);
@@ -69,7 +62,7 @@ export function BuscadorPos({ onSeleccionar }: { onSeleccionar: (p: ProductoPos)
       </div>
 
       {termino.trim() && (
-        <div className="absolute z-20 mt-1 w-full glass rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+        <div className="absolute z-20 mt-1 w-full glass rounded-xl overflow-hidden max-h-[60vh] overflow-y-auto">
           {buscando ? (
             <p className="p-3 text-xs text-muted-foreground">Buscando…</p>
           ) : resultados.length === 0 ? (
@@ -90,8 +83,9 @@ export function BuscadorPos({ onSeleccionar }: { onSeleccionar: (p: ProductoPos)
                   <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="truncate">{p.nombre}</span>
                 </span>
-                <span className="shrink-0 text-xs font-semibold text-brand-cyan">
-                  {formatBs(p.precio_venta_bs)}
+                <span className="shrink-0 text-right leading-tight">
+                  <span className="block text-xs font-semibold text-brand-cyan">{formatBs(p.precio_venta_bs)}</span>
+                  <span className="block text-[11px] text-muted-foreground">{formatUSD(p.precio_venta)}</span>
                 </span>
               </button>
             ))

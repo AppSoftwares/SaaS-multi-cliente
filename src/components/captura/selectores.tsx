@@ -15,13 +15,15 @@ import type { Categoria, Proveedor } from "@/lib/types";
 
 const NUEVA = "__NUEVA__";
 
-// Desplegable con opciones existentes + posibilidad de escribir una nueva.
+// Campo con búsqueda: se escribe para filtrar las opciones existentes o, si
+// no existe, se crea con el texto escrito (se resuelve al guardar). Antes era
+// un desplegable con "Nueva…" escondido al final de una lista larga.
 export function SelectorCombo({
   label,
   opciones,
   value,
   onChange,
-  placeholder = "Selecciona…",
+  placeholder = "Escribe o elige…",
 }: {
   label?: string;
   opciones: string[];
@@ -29,64 +31,55 @@ export function SelectorCombo({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
-  const existe = opciones.some((o) => o.toLowerCase() === value.trim().toLowerCase());
-  const [modoNueva, setModoNueva] = useState(value !== "" && !existe);
+  const [abierto, setAbierto] = useState(false);
+  const texto = value.trim().toLowerCase();
+  const existe = opciones.some((o) => o.toLowerCase() === texto);
+  const visibles = (texto && !existe ? opciones.filter((o) => o.toLowerCase().includes(texto)) : opciones).slice(0, 60);
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 relative">
       {label && <Label>{label}</Label>}
-      {modoNueva ? (
-        <div className="flex gap-1">
-          <Input
-            autoFocus
-            placeholder="Escribe el nombre nuevo…"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-          />
-          {opciones.length > 0 && (
+      <Input
+        value={value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onFocus={() => setAbierto(true)}
+        onBlur={() => setAbierto(false)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setAbierto(true);
+        }}
+      />
+      {abierto && (visibles.length > 0 || (texto && !existe)) && (
+        <div
+          className="absolute z-30 mt-1 w-full glass rounded-xl max-h-56 overflow-y-auto shadow-lg"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {visibles.map((o) => (
+            <button
+              key={o}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-primary/10 border-b border-border/30 last:border-0"
+              onClick={() => {
+                onChange(o);
+                setAbierto(false);
+              }}
+            >
+              {o}
+            </button>
+          ))}
+          {texto && !existe && (
             <button
               type="button"
-              onClick={() => {
-                setModoNueva(false);
-                onChange("");
-              }}
-              className="px-2 text-muted-foreground hover:text-foreground"
-              aria-label="Volver a la lista"
+              className="flex w-full items-center gap-1 px-3 py-2 text-left text-sm text-primary hover:bg-primary/10"
+              onClick={() => setAbierto(false)}
             >
-              <Undo2 className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" /> Crear “{value.trim()}”
             </button>
           )}
         </div>
-      ) : (
-        <Select
-          value={existe ? value : ""}
-          onValueChange={(v) => {
-            if (v === NUEVA) {
-              setModoNueva(true);
-              onChange("");
-            } else {
-              onChange(v ?? "");
-            }
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {opciones.map((o) => (
-              <SelectItem key={o} value={o}>
-                {o}
-              </SelectItem>
-            ))}
-            <SelectItem value={NUEVA}>
-              <span className="flex items-center gap-1 text-primary">
-                <Plus className="h-3.5 w-3.5" /> Nueva…
-              </span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
       )}
-      {modoNueva && value.trim() && (
+      {texto && !existe && !abierto && (
         <p className="text-[11px] text-brand-cyan">Se creará: “{value.trim()}”</p>
       )}
     </div>
