@@ -52,7 +52,7 @@ export function SelectorCombo({
       />
       {abierto && (visibles.length > 0 || (texto && !existe)) && (
         <div
-          className="absolute z-30 mt-1 w-full glass rounded-xl max-h-56 overflow-y-auto shadow-lg"
+          className="mt-1 w-full glass rounded-xl max-h-56 overflow-y-auto overscroll-contain touch-pan-y shadow-lg"
           onMouseDown={(e) => e.preventDefault()}
         >
           {visibles.map((o) => (

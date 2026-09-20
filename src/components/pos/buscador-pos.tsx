@@ -62,7 +62,9 @@ export function BuscadorPos({ onSeleccionar }: { onSeleccionar: (p: ProductoPos)
       </div>
 
       {termino.trim() && (
-        <div className="absolute z-20 mt-1 w-full glass rounded-xl overflow-hidden max-h-[60vh] overflow-y-auto">
+        // En flujo normal (no absoluta): una lista que sobresale de la pantalla no
+        // agrega altura a la página y sus últimos resultados quedaban inalcanzables.
+        <div className="mt-1 w-full glass rounded-xl max-h-[50vh] overflow-y-auto overscroll-contain touch-pan-y">
           {buscando ? (
             <p className="p-3 text-xs text-muted-foreground">Buscando…</p>
           ) : resultados.length === 0 ? (
