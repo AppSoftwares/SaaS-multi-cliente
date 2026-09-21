@@ -49,17 +49,46 @@ interface ItemEditable {
   incluir: boolean;
 }
 
+// Códigos repetidos dentro de la misma factura (SKU, código de barras o el mismo
+// producto existente en dos líneas). Devuelve índice de línea -> mensaje; la
+// línea marcada es la que repite a una anterior.
+function calcularDuplicados(items: ItemEditable[]): Record<number, string> {
+  const res: Record<number, string> = {};
+  const vistos = new Map<string, number>();
+  items.forEach((it, i) => {
+    if (!it.incluir) return;
+    const claves: [string, string][] = [];
+    if (it.sku.trim()) claves.push([`sku:${it.sku.trim().toLowerCase()}`, `El SKU “${it.sku.trim()}”`]);
+    if (it.codigo_barras.trim()) {
+      claves.push([`cb:${it.codigo_barras.trim().toLowerCase()}`, `El código de barras “${it.codigo_barras.trim()}”`]);
+    }
+    if (it.producto_id) claves.push([`prod:${it.producto_id}`, `Este producto (${it.nombre})`]);
+    for (const [clave, etiqueta] of claves) {
+      const antes = vistos.get(clave);
+      if (antes !== undefined) {
+        res[i] ??= `${etiqueta} está repetido: ya se usó en la línea ${antes + 1}. Corrígelo antes de registrar la factura.`;
+      } else {
+        vistos.set(clave, i);
+      }
+    }
+  });
+  return res;
+}
+
 type BaseGanancia = "lista" | "neto";
-const CLAVE_GANANCIA = "factura_ganancia_prefs";
+// v2: el valor por defecto pasó de "lista" a "neto" (primero el descuento del
+// proveedor y sobre ese costo el margen); la clave nueva descarta la elección
+// que la versión anterior guardó sola en cada navegador.
+const CLAVE_GANANCIA = "factura_ganancia_prefs_v2";
 
 function leerPrefsGanancia(): { base: BaseGanancia; pct: number | "" } {
-  const defecto = { base: "lista" as BaseGanancia, pct: "" as number | "" };
+  const defecto = { base: "neto" as BaseGanancia, pct: "" as number | "" };
   if (typeof window === "undefined") return defecto;
   try {
     const raw = window.localStorage.getItem(CLAVE_GANANCIA);
     if (!raw) return defecto;
     const p = JSON.parse(raw) as { base?: string; pct?: number | "" };
-    return { base: p.base === "neto" ? "neto" : "lista", pct: typeof p.pct === "number" ? p.pct : "" };
+    return { base: p.base === "lista" ? "lista" : "neto", pct: typeof p.pct === "number" ? p.pct : "" };
   } catch {
     return defecto;
   }
@@ -251,9 +280,9 @@ export function FacturaWizard({
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
   }
 
-  // La ganancia puede calcularse sobre el precio de lista (sin el descuento del
-  // proveedor, lo habitual: se vende sobre el precio "total") o sobre el costo
-  // ya con descuento. La elección se recuerda entre facturas.
+  // La ganancia se calcula por defecto sobre el costo ya con el descuento del
+  // proveedor (primero el descuento y sobre ese costo el margen); también puede
+  // calcularse sobre el precio de lista. La elección se recuerda entre facturas.
   const [baseGanancia, setBaseGanancia] = useState<BaseGanancia>(() => leerPrefsGanancia().base);
   const [gananciaGlobal, setGananciaGlobal] = useState<number | "">(() => leerPrefsGanancia().pct);
   useEffect(() => {
@@ -335,7 +364,10 @@ export function FacturaWizard({
           : x
       )
     );
-    toast.success(`Producto encontrado en catálogo: ${prod.nombre}`);
+    toast.warning(
+      `Ese código ya existe en el inventario: “${prod.nombre}”. No se crea un producto nuevo; se sumará el stock a ese.`,
+      { duration: 8000 }
+    );
   }
 
   async function elegirFoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -452,6 +484,10 @@ export function FacturaWizard({
 
   async function confirmar() {
     const activos = items.filter((it) => it.incluir);
+    if (Object.keys(calcularDuplicados(items)).length > 0) {
+      toast.error("Hay códigos repetidos en la factura (marcados en rojo). Corrígelos para poder registrarla.");
+      return;
+    }
     if (activos.length === 0) {
       toast.error("No hay ítems para registrar");
       return;
@@ -588,6 +624,8 @@ export function FacturaWizard({
   const totalLista = Math.round(lineasActivas.reduce((s, it) => s + it.cantidad * it.costoLista, 0) * 100) / 100;
   const totalNeto = Math.round(lineasActivas.reduce((s, it) => s + it.cantidad * it.precio_costo, 0) * 100) / 100;
   const hayDescuentosVista = lineasActivas.some((it) => it.descuentoPct !== "" && it.descuentoPct > 0);
+  const duplicados = calcularDuplicados(items);
+  const hayDuplicados = Object.keys(duplicados).length > 0;
 
   if (vista === "form") {
     return (
@@ -739,8 +777,8 @@ export function FacturaWizard({
           <div className="flex flex-wrap gap-2 text-xs">
             {(
               [
-                ["lista", "Sobre el precio de lista (sin descuento)"],
                 ["neto", "Sobre el costo con descuento"],
+                ["lista", "Sobre el precio de lista (sin descuento)"],
               ] as const
             ).map(([base, texto]) => (
               <button
@@ -823,9 +861,9 @@ export function FacturaWizard({
               </div>
             </div>
 
-            {conflictos[i] && (
+            {(duplicados[i] || conflictos[i]) && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
-                {conflictos[i]}
+                {duplicados[i] ?? conflictos[i]}
               </p>
             )}
             {!it.incluir ? (
@@ -969,7 +1007,12 @@ export function FacturaWizard({
           <Save className="mr-2 h-4 w-4" /> Guardar y continuar después
         </Button>
       </div>
-      <Button onClick={confirmar} disabled={guardando} className="w-full">
+      {hayDuplicados && (
+        <p className="text-xs text-destructive text-center">
+          Hay códigos repetidos (líneas marcadas en rojo). Corrígelos para poder registrar la factura.
+        </p>
+      )}
+      <Button onClick={confirmar} disabled={guardando || hayDuplicados} className="w-full">
         {guardando ? "Guardando…" : "Registrar factura"}
       </Button>
     </div>
