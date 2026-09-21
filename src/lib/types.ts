@@ -369,6 +369,12 @@ export interface FacturaItem {
   // Costo de lista y % de descuento del proveedor (precio_costo es el neto).
   costo_lista?: number | null;
   descuento_pct?: number | null;
+  // Clasificación elegida para un producto nuevo (se conserva en el borrador).
+  categoria_madre?: string | null;
+  categoria_sub?: string | null;
+  marca?: string | null;
+  unidad_medida?: string | null;
+  utilidad_pct?: number | null;
   subtotal: number;
   es_nuevo: boolean;
   aplicado: boolean;

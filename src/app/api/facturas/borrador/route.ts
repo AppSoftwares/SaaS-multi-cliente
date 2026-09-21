@@ -12,6 +12,11 @@ interface ItemBorrador {
   precio_costo: number;
   costo_lista?: number | null;
   descuento_pct?: number | null;
+  categoria_madre?: string | null;
+  categoria_sub?: string | null;
+  marca?: string | null;
+  unidad_medida?: string | null;
+  utilidad_pct?: number | null;
   precio_venta?: number | null;
   es_nuevo: boolean;
 }
@@ -101,6 +106,11 @@ export async function POST(req: NextRequest) {
         precio_costo: Number(it.precio_costo) || 0,
         costo_lista: it.costo_lista ?? null,
         descuento_pct: it.descuento_pct ?? null,
+        categoria_madre: it.categoria_madre || null,
+        categoria_sub: it.categoria_sub || null,
+        marca: it.marca || null,
+        unidad_medida: it.unidad_medida || null,
+        utilidad_pct: it.utilidad_pct ?? null,
         precio_venta_sugerido: it.precio_venta ?? null,
         subtotal: (Number(it.cantidad) || 0) * (Number(it.precio_costo) || 0),
         es_nuevo: !!it.es_nuevo,
