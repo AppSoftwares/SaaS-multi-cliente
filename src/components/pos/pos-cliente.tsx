@@ -848,9 +848,16 @@ export function PosCliente({
                       )}
                       <p className="text-sm font-semibold text-brand-cyan">{formatBs(neto)}</p>
                       {mostrarUsd && (
-                        <p className="text-[11px] text-brand-amber">
-                          {formatUSD(i.cantidad * i.precio_venta)}
-                        </p>
+                        // Las tres opciones de precio por ítem: Bs, divisa ($ efectivo) y
+                        // dólar BCV. Con descuento se aplica la misma proporción.
+                        <>
+                          <p className="text-[11px] text-brand-amber">
+                            {formatUSD(i.cantidad * i.precio_venta * (bruto > 0 ? neto / bruto : 1))} divisa
+                          </p>
+                          <p className="text-[11px] text-brand-purple">
+                            {formatUSD(i.cantidad * i.precio_venta_usd_ajustado * (bruto > 0 ? neto / bruto : 1))} BCV
+                          </p>
+                        </>
                       )}
                     </div>
                   </div>
@@ -890,6 +897,7 @@ export function PosCliente({
           <span>
             Precio en divisas de <b>solo uso interno</b>: nunca mostrar ni imprimir al cliente. Es el
             precio de venta cargado en el inventario. Total a cobrar en divisas: {formatUSD(totalUsdRef)}
+            {tasaBcv && tasaBcv > 0 && <> · en dólar BCV: {formatUSD(totalConImpuestos / tasaBcv)}</>}
           </span>
         </div>
       )}

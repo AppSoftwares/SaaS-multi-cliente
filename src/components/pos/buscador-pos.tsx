@@ -87,7 +87,9 @@ export function BuscadorPos({ onSeleccionar }: { onSeleccionar: (p: ProductoPos)
                 </span>
                 <span className="shrink-0 text-right leading-tight">
                   <span className="block text-xs font-semibold text-brand-cyan">{formatBs(p.precio_venta_bs)}</span>
-                  <span className="block text-[11px] text-muted-foreground">{formatUSD(p.precio_venta)}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {formatUSD(p.precio_venta)} · BCV {formatUSD(p.precio_venta_usd_ajustado)}
+                  </span>
                 </span>
               </button>
             ))
