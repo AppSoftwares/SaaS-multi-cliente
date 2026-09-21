@@ -19,6 +19,7 @@ import {
 import { comprimirYSubirFactura } from "@/lib/storage";
 import { resolverCatalogos, resolverProveedor } from "@/lib/catalogos";
 import { generarCodigoBarrasInterno } from "@/lib/barcode";
+import { CampoNumero } from "@/components/captura/campo-numero";
 import { SelectorCombo, SelectorCategoria, SelectorProveedor } from "@/components/captura/selectores";
 import { EtiquetaBarcode } from "@/components/productos/etiqueta-barcode";
 import { DEMO } from "@/lib/demo";
@@ -395,11 +396,19 @@ export function FacturaWizard({
     // Las líneas deben sumar el total de la factura: si no, casi siempre es una
     // línea perdida o una cantidad mal leída. Es una advertencia (el total puede
     // incluir IVA u otros cargos), no un bloqueo.
-    const sumaItems = activos.reduce((s, it) => s + it.cantidad * it.precio_costo, 0);
-    const dif = Math.round((sumaItems - montoTotal) * 100) / 100;
-    if (montoTotal > 0 && Math.abs(dif) > Math.max(0.5, montoTotal * 0.01)) {
+    // El total impreso puede ser a costo de lista (antes de los descuentos por
+    // producto) o ya con descuento: se acepta si cualquiera de las dos cuadra.
+    const sumaNeta = activos.reduce((s, it) => s + it.cantidad * it.precio_costo, 0);
+    const sumaLista = activos.reduce((s, it) => s + it.cantidad * it.costoLista, 0);
+    const hayDescuentos = activos.some((it) => it.descuentoPct !== "" && it.descuentoPct > 0);
+    const tolerancia = Math.max(0.5, montoTotal * 0.01);
+    const cuadra = Math.abs(sumaNeta - montoTotal) <= tolerancia || Math.abs(sumaLista - montoTotal) <= tolerancia;
+    if (montoTotal > 0 && !cuadra) {
+      const detalle = hayDescuentos
+        ? `A costo de lista las líneas suman ${sumaLista.toFixed(2)} ${moneda} y con los descuentos por producto ${sumaNeta.toFixed(2)} ${moneda}`
+        : `Las líneas suman ${sumaNeta.toFixed(2)} ${moneda}`;
       const seguir = window.confirm(
-        `Las líneas suman ${sumaItems.toFixed(2)} ${moneda} pero el total de la factura es ${montoTotal.toFixed(2)} ${moneda} (diferencia ${dif.toFixed(2)}).\n\nRevisa que no falte ningún producto y que las cantidades y costos estén bien.\n\n¿Registrar la factura de todos modos?`
+        `${detalle}, pero el total de la factura es ${montoTotal.toFixed(2)} ${moneda}.\n\nRevisa que no falte ningún producto, que las cantidades y costos estén bien y, si la factura tiene un descuento general, que el total refleje ese descuento.\n\n¿Registrar la factura de todos modos?`
       );
       if (!seguir) return;
     }
@@ -612,13 +621,7 @@ export function FacturaWizard({
         </div>
         <div className="space-y-1">
           <Label>Monto total</Label>
-          <Input
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            value={montoTotal}
-            onChange={(e) => setMontoTotal(Number(e.target.value))}
-          />
+          <CampoNumero value={montoTotal} onValor={(v) => setMontoTotal(Number(v) || 0)} />
         </div>
       </div>
 
@@ -693,22 +696,14 @@ export function FacturaWizard({
                 </div>
                 <div className="space-y-1">
                   <Label>Cantidad</Label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    value={it.cantidad}
-                    onChange={(e) => setItem(i, "cantidad", Number(e.target.value))}
-                  />
+                  <CampoNumero entero value={it.cantidad} onValor={(v) => setItem(i, "cantidad", Number(v) || 0)} />
                 </div>
                 <div className="space-y-1">
                   <Label>Precio costo {it.descuentoPct !== "" && it.descuentoPct > 0 ? "(lista)" : ""}</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    inputMode="decimal"
+                  <CampoNumero
                     value={it.costoLista}
-                    onChange={(e) => {
-                      const costoLista = Number(e.target.value);
+                    onValor={(v) => {
+                      const costoLista = Number(v) || 0;
                       const neto = costoConDescuento(costoLista, it.descuentoPct);
                       setItem(i, "costoLista", costoLista);
                       setItem(i, "precio_costo", neto);
@@ -718,16 +713,11 @@ export function FacturaWizard({
                 </div>
                 <div className="space-y-1">
                   <Label>Descuento del proveedor (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    inputMode="decimal"
+                  <CampoNumero
+                    permitirVacio
                     placeholder="Ej: 25"
                     value={it.descuentoPct}
-                    onChange={(e) => {
-                      const descuentoPct = e.target.value === "" ? "" : Number(e.target.value);
+                    onValor={(descuentoPct) => {
                       const neto = costoConDescuento(it.costoLista, descuentoPct);
                       setItem(i, "descuentoPct", descuentoPct);
                       setItem(i, "precio_costo", neto);
@@ -803,14 +793,11 @@ export function FacturaWizard({
                     />
                     <div className="space-y-1">
                       <Label>% Utilidad</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
+                      <CampoNumero
+                        permitirVacio
                         placeholder="Ej: 30"
                         value={it.utilidad_pct}
-                        onChange={(e) => {
-                          const pct = e.target.value === "" ? "" : Number(e.target.value);
+                        onValor={(pct) => {
                           setItem(i, "utilidad_pct", pct);
                           calcularPrecioVentaItem(i, it.precio_costo, pct);
                         }}
@@ -818,13 +805,7 @@ export function FacturaWizard({
                     </div>
                     <div className="space-y-1">
                       <Label>Precio venta (USD)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={it.precio_venta}
-                        onChange={(e) => setItem(i, "precio_venta", Number(e.target.value))}
-                      />
+                      <CampoNumero value={it.precio_venta} onValor={(v) => setItem(i, "precio_venta", Number(v) || 0)} />
                     </div>
                   </>
                 )}
