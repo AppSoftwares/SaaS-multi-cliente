@@ -49,6 +49,27 @@ interface ItemEditable {
   incluir: boolean;
 }
 
+type BaseGanancia = "lista" | "neto";
+const CLAVE_GANANCIA = "factura_ganancia_prefs";
+
+function leerPrefsGanancia(): { base: BaseGanancia; pct: number | "" } {
+  const defecto = { base: "lista" as BaseGanancia, pct: "" as number | "" };
+  if (typeof window === "undefined") return defecto;
+  try {
+    const raw = window.localStorage.getItem(CLAVE_GANANCIA);
+    if (!raw) return defecto;
+    const p = JSON.parse(raw) as { base?: string; pct?: number | "" };
+    return { base: p.base === "neto" ? "neto" : "lista", pct: typeof p.pct === "number" ? p.pct : "" };
+  } catch {
+    return defecto;
+  }
+}
+
+// Precio con ganancia, en centavos enteros (evita errores de coma flotante).
+function precioConGanancia(costo: number, pct: number): number {
+  return Math.round((Math.round(costo * 100) * (100 + pct)) / 100) / 100;
+}
+
 function costoConDescuento(costoLista: number, descuentoPct: number | ""): number {
   const pct = descuentoPct === "" ? 0 : Math.min(Math.max(descuentoPct, 0), 100);
   // En centavos enteros: 3.30 * 0.75 en coma flotante da 2.4749999… y
@@ -225,12 +246,51 @@ export function FacturaWizard({
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
   }
 
-  // Costo + % utilidad -> precio de venta calculado (el ADMIN ya no tiene que
-  // sacar la cuenta con calculadora).
+  // La ganancia puede calcularse sobre el precio de lista (sin el descuento del
+  // proveedor, lo habitual: se vende sobre el precio "total") o sobre el costo
+  // ya con descuento. La elección se recuerda entre facturas.
+  const [baseGanancia, setBaseGanancia] = useState<BaseGanancia>(() => leerPrefsGanancia().base);
+  const [gananciaGlobal, setGananciaGlobal] = useState<number | "">(() => leerPrefsGanancia().pct);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CLAVE_GANANCIA, JSON.stringify({ base: baseGanancia, pct: gananciaGlobal }));
+    } catch {
+      /* sin almacenamiento: no pasa nada */
+    }
+  }, [baseGanancia, gananciaGlobal]);
+
+  const costoBase = (lista: number, neto: number, base: BaseGanancia = baseGanancia) =>
+    base === "lista" ? lista : neto;
+
+  // Costo base + % utilidad -> precio de venta calculado (el ADMIN ya no tiene
+  // que sacar la cuenta con calculadora).
   function calcularPrecioVentaItem(i: number, costo: number, utilidad: number | "") {
     if (utilidad === "" || !(costo > 0)) return;
-    const venta = Math.round(costo * (1 + utilidad / 100) * 100) / 100;
-    setItem(i, "precio_venta", venta);
+    setItem(i, "precio_venta", precioConGanancia(costo, utilidad));
+  }
+
+  function aplicarGananciaATodos(pct: number, base: BaseGanancia) {
+    setItems((arr) =>
+      arr.map((it) =>
+        it.status === "NEW" && it.incluir
+          ? { ...it, utilidad_pct: pct, precio_venta: precioConGanancia(costoBase(it.costoLista, it.precio_costo, base), pct) }
+          : it
+      )
+    );
+  }
+
+  function cambiarBaseGanancia(base: BaseGanancia) {
+    setBaseGanancia(base);
+    setItems((arr) =>
+      arr.map((it) =>
+        it.status === "NEW" && it.incluir && it.utilidad_pct !== ""
+          ? {
+              ...it,
+              precio_venta: precioConGanancia(costoBase(it.costoLista, it.precio_costo, base), Number(it.utilidad_pct)),
+            }
+          : it
+      )
+    );
   }
 
   // Si el código de barras o SKU que se está tipeando ya existe en el
@@ -668,6 +728,49 @@ export function FacturaWizard({
         </label>
       </div>
 
+      {items.some((it) => it.status === "NEW" && it.incluir) && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-sm font-medium">Ganancia para el precio de venta</p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {(
+              [
+                ["lista", "Sobre el precio de lista (sin descuento)"],
+                ["neto", "Sobre el costo con descuento"],
+              ] as const
+            ).map(([base, texto]) => (
+              <button
+                key={base}
+                type="button"
+                onClick={() => cambiarBaseGanancia(base)}
+                className={`rounded-full border px-3 py-1 font-medium transition-colors ${
+                  baseGanancia === base
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="flex-1 space-y-1">
+              <Label>% de ganancia para todos los productos nuevos</Label>
+              <CampoNumero permitirVacio placeholder="Ej: 30" value={gananciaGlobal} onValor={setGananciaGlobal} />
+            </div>
+            <Button
+              type="button"
+              disabled={gananciaGlobal === "" || Number(gananciaGlobal) <= 0}
+              onClick={() => aplicarGananciaATodos(Number(gananciaGlobal), baseGanancia)}
+            >
+              Aplicar a todos
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Después puedes ajustar el % o el precio de cada línea a mano.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {items.map((it, i) => (
           <div key={i} className="rounded-xl border p-3 space-y-2">
@@ -741,7 +844,7 @@ export function FacturaWizard({
                       const neto = costoConDescuento(costoLista, it.descuentoPct);
                       setItem(i, "costoLista", costoLista);
                       setItem(i, "precio_costo", neto);
-                      if (it.status === "NEW") calcularPrecioVentaItem(i, neto, it.utilidad_pct);
+                      if (it.status === "NEW") calcularPrecioVentaItem(i, costoBase(costoLista, neto), it.utilidad_pct);
                     }}
                   />
                 </div>
@@ -755,7 +858,7 @@ export function FacturaWizard({
                       const neto = costoConDescuento(it.costoLista, descuentoPct);
                       setItem(i, "descuentoPct", descuentoPct);
                       setItem(i, "precio_costo", neto);
-                      if (it.status === "NEW") calcularPrecioVentaItem(i, neto, it.utilidad_pct);
+                      if (it.status === "NEW") calcularPrecioVentaItem(i, costoBase(it.costoLista, neto), it.utilidad_pct);
                     }}
                   />
                 </div>
@@ -826,14 +929,14 @@ export function FacturaWizard({
                       onChange={(v) => setItem(i, "unidad_medida", v)}
                     />
                     <div className="space-y-1">
-                      <Label>% Utilidad</Label>
+                      <Label>% Utilidad ({baseGanancia === "lista" ? "sobre lista" : "sobre costo c/desc."})</Label>
                       <CampoNumero
                         permitirVacio
                         placeholder="Ej: 30"
                         value={it.utilidad_pct}
                         onValor={(pct) => {
                           setItem(i, "utilidad_pct", pct);
-                          calcularPrecioVentaItem(i, it.precio_costo, pct);
+                          calcularPrecioVentaItem(i, costoBase(it.costoLista, it.precio_costo), pct);
                         }}
                       />
                     </div>
