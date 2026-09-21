@@ -51,6 +51,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "La factura no tiene ítems" }, { status: 400 });
   }
 
+  // SKU y código de barras son únicos por negocio. Si un producto NUEVO choca
+  // con otro (o con otra línea de esta misma factura), antes se descartaba esa
+  // línea en silencio y la factura se guardaba "con éxito" sin ese producto.
+  // Ahora se valida ANTES de crear nada y se le dice al usuario qué línea es.
+  const conflictos: { idx: number; nombre: string; campo: "sku" | "codigo_barras"; valor: string; con: string }[] = [];
+  const nuevos = items.map((it, idx) => ({ it, idx })).filter((x) => x.it.status === "NEW");
+  for (const campo of ["sku", "codigo_barras"] as const) {
+    const vistos = new Map<string, string>();
+    for (const { it, idx } of nuevos) {
+      const valor = it[campo] || "";
+      if (!valor) continue;
+      const previo = vistos.get(valor);
+      if (previo) {
+        conflictos.push({ idx, nombre: it.nombre, campo, valor, con: `otra línea de esta factura (${previo})` });
+      } else {
+        vistos.set(valor, it.nombre);
+      }
+    }
+    const valores = [...vistos.keys()];
+    if (valores.length > 0) {
+      const { data: existentes } = await supabase
+        .from("productos")
+        .select(`nombre, ${campo}`)
+        .eq("negocio_id", negocioId)
+        .in(campo, valores);
+      for (const ex of (existentes ?? []) as unknown as Record<string, string>[]) {
+        const { it, idx } = nuevos.find((x) => x.it[campo] === ex[campo])!;
+        if (!conflictos.some((c) => c.idx === idx && c.campo === campo)) {
+          conflictos.push({ idx, nombre: it.nombre, campo, valor: ex[campo], con: ex.nombre });
+        }
+      }
+    }
+  }
+  if (conflictos.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Hay ${conflictos.length} producto(s) con SKU o código de barras que ya existe. No se guardó nada: corrígelos e inténtalo de nuevo.`,
+        conflictos,
+      },
+      { status: 409 }
+    );
+  }
+
   const datosFactura = {
     negocio_id: negocioId,
     proveedor_id: f.proveedor_id || null,
@@ -113,6 +156,7 @@ export async function POST(req: NextRequest) {
   const codigosUsados = new Set<string>();
   const creados: { nombre: string; codigo_barras: string; producto_id: string }[] = [];
   const alertasCosto: { nombre: string; costo_anterior: number; costo_nuevo: number; pct: number }[] = [];
+  const fallidos: { nombre: string; error: string }[] = [];
 
   for (const item of items) {
     const cantidad = Math.max(0, Number(item.cantidad) || 0);
@@ -150,7 +194,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (errInsert || !nuevo) {
-        continue; // no se pudo crear este ítem; se deja fuera de la factura
+        fallidos.push({ nombre: item.nombre, error: errInsert?.message ?? "No se pudo crear el producto" });
+        continue;
       }
       productoId = nuevo.id;
       creados.push({ nombre: item.nombre, codigo_barras: codigoBarras, producto_id: nuevo.id });
@@ -234,5 +279,11 @@ export async function POST(req: NextRequest) {
     await supabase.from("facturas").update({ estado: "aplicada", updated_at: new Date().toISOString() }).eq("id", factura.id);
   }
 
-  return NextResponse.json({ ok: true, factura_id: factura.id, creados, alertas_costo: alertasCosto });
+  return NextResponse.json({
+    ok: true,
+    factura_id: factura.id,
+    creados,
+    alertas_costo: alertasCosto,
+    fallidos,
+  });
 }

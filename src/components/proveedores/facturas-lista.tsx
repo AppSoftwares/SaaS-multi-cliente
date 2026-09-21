@@ -23,13 +23,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy, Archive } from "lucide-react";
+import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy, Archive, Tags, UserPen } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { imprimirEtiquetas } from "@/lib/etiquetas";
 import { toast } from "sonner";
 import { formatFecha } from "@/lib/format";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import type { Factura, PagoProveedor, Proveedor } from "@/lib/types";
 
 const FORMAS_PAGO = ["Efectivo", "Pago Móvil", "Transferencia", "Zelle", "Binance (USDT)", "Otro"];
+
+type FacturaLista = Factura & { proveedor_nombre?: string | null };
+
+interface ItemEtiqueta {
+  producto_id: string;
+  nombre: string;
+  codigo: string;
+  recibidas: number;
+  copias: number;
+}
 
 export function FacturasLista({
   inicial,
@@ -59,6 +71,92 @@ export function FacturasLista({
   // A pedido del cliente: la lista principal solo muestra pendientes por
   // pagar; las pagadas se archivan aparte y se consultan con un clic.
   const [verPagadas, setVerPagadas] = useState(false);
+  const [dialogPagada, setDialogPagada] = useState<{
+    factura: FacturaLista;
+    modo: "bloqueado" | "confirmar" | "reabrir";
+  } | null>(null);
+
+  // Etiquetas (código de barras) de los productos de una factura ya cargada.
+  const [facturaEtiquetas, setFacturaEtiquetas] = useState<FacturaLista | null>(null);
+  const [itemsEtiqueta, setItemsEtiqueta] = useState<ItemEtiqueta[] | null>(null);
+  const [porUnidad, setPorUnidad] = useState(false);
+
+  // Cambiar el proveedor de una factura ya registrada.
+  const [facturaProveedor, setFacturaProveedor] = useState<FacturaLista | null>(null);
+  const [nuevoProveedorId, setNuevoProveedorId] = useState("");
+  const [guardandoProveedor, setGuardandoProveedor] = useState(false);
+
+  async function abrirEtiquetas(f: FacturaLista) {
+    setFacturaEtiquetas(f);
+    setItemsEtiqueta(null);
+    setPorUnidad(false);
+    if (DEMO) {
+      setItemsEtiqueta([]);
+      return;
+    }
+    const { data: lineas, error } = await supabase
+      .from("factura_items")
+      .select("producto_id, nombre, cantidad")
+      .eq("factura_id", f.id)
+      .not("producto_id", "is", null)
+      .order("created_at");
+    if (error) {
+      setFacturaEtiquetas(null);
+      return toast.error(error.message);
+    }
+    const ids = [...new Set((lineas ?? []).map((l) => l.producto_id as string))];
+    const { data: prods } = ids.length
+      ? await supabase.from("productos").select("id, nombre, codigo_barras").in("id", ids)
+      : { data: [] as { id: string; nombre: string; codigo_barras: string | null }[] };
+    const porId = new Map((prods ?? []).map((p) => [p.id, p]));
+    const items: ItemEtiqueta[] = [];
+    for (const l of lineas ?? []) {
+      const p = porId.get(l.producto_id as string);
+      if (!p?.codigo_barras) continue;
+      items.push({
+        producto_id: p.id,
+        nombre: p.nombre,
+        codigo: p.codigo_barras,
+        recibidas: Math.max(1, Math.round(Number(l.cantidad) || 1)),
+        copias: 1,
+      });
+    }
+    setItemsEtiqueta(items);
+  }
+
+  function copiasDe(it: ItemEtiqueta) {
+    return porUnidad ? it.recibidas : it.copias;
+  }
+
+  function imprimirTodasEtiquetas() {
+    if (!itemsEtiqueta?.length) return;
+    const ok = imprimirEtiquetas(itemsEtiqueta.map((it) => ({ nombre: it.nombre, codigo: it.codigo, copias: copiasDe(it) })));
+    if (!ok) toast.error("No se pudo abrir la ventana de impresión (permite las ventanas emergentes del navegador)");
+  }
+
+  async function guardarProveedorFactura() {
+    if (!facturaProveedor || !nuevoProveedorId) return;
+    const prov = proveedores.find((p) => p.id === nuevoProveedorId);
+    setGuardandoProveedor(true);
+    if (!DEMO) {
+      const { error } = await supabase
+        .from("facturas")
+        .update({ proveedor_id: nuevoProveedorId, proveedor_nombre_nuevo: null })
+        .eq("id", facturaProveedor.id);
+      if (error) {
+        setGuardandoProveedor(false);
+        return toast.error(error.message);
+      }
+    }
+    setFacturas((fs) =>
+      fs.map((x) =>
+        x.id === facturaProveedor.id ? { ...x, proveedor_id: nuevoProveedorId, proveedor_nombre: prov?.nombre ?? null } : x
+      )
+    );
+    setGuardandoProveedor(false);
+    setFacturaProveedor(null);
+    toast.success("Proveedor actualizado");
+  }
 
   const facturasPendientes = facturas.filter((f) => !f.pagada);
   const facturasPagadas = facturas.filter((f) => f.pagada);
@@ -86,6 +184,14 @@ export function FacturasLista({
 
   function pagosDeFactura(id: string) {
     return pagos.filter((p) => p.factura_id === id).sort((a, b) => b.numero_recibo - a.numero_recibo);
+  }
+
+  // Un clic en la etiqueta Pendiente/Pagada ya no cambia el estado de golpe:
+  // si falta saldo, avisa que hay que registrar abonos; si los abonos ya
+  // cubren el total, pide confirmación (y también al reabrir una pagada).
+  function pedirCambioPagada(f: FacturaLista) {
+    if (f.pagada) return setDialogPagada({ factura: f, modo: "reabrir" });
+    setDialogPagada({ factura: f, modo: saldoPendiente(f) > 0.005 ? "bloqueado" : "confirmar" });
   }
 
   async function togglePagada(f: Factura) {
@@ -251,7 +357,7 @@ export function FacturasLista({
                         <Badge
                           variant={f.pagada ? "default" : "outline"}
                           className={esAdmin ? "cursor-pointer" : ""}
-                          onClick={esAdmin ? () => togglePagada(f) : undefined}
+                          onClick={esAdmin ? () => pedirCambioPagada(f) : undefined}
                         >
                           {f.pagada ? "Pagada" : "Pendiente"}
                         </Badge>
@@ -270,7 +376,21 @@ export function FacturasLista({
                     </div>
 
                     {esAdmin && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" className="h-8" onClick={() => abrirEtiquetas(f)}>
+                          <Tags className="h-3.5 w-3.5 mr-1" /> Etiquetas
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => {
+                            setFacturaProveedor(f);
+                            setNuevoProveedorId(f.proveedor_id ?? "");
+                          }}
+                        >
+                          <UserPen className="h-3.5 w-3.5 mr-1" /> Proveedor
+                        </Button>
                         {!f.pagada && (
                           <Button variant="outline" size="sm" className="h-8" onClick={() => abrirAbono(f)}>
                             <Receipt className="h-3.5 w-3.5 mr-1" /> Registrar abono
@@ -319,6 +439,162 @@ export function FacturasLista({
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!dialogPagada} onOpenChange={(o) => !o && setDialogPagada(null)}>
+        <DialogContent>
+          {dialogPagada && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {dialogPagada.modo === "bloqueado"
+                    ? "Aún hay saldo por pagar"
+                    : dialogPagada.modo === "confirmar"
+                      ? "¿Marcar la factura como pagada?"
+                      : "¿Volver a marcarla como pendiente?"}
+                </DialogTitle>
+                <DialogDescription>
+                  Factura {dialogPagada.factura.numero_factura || "sin número"} ·{" "}
+                  {dialogPagada.factura.proveedor_nombre ??
+                    nombreProveedor(dialogPagada.factura.proveedor_id) ??
+                    "Sin proveedor"}
+                </DialogDescription>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                {dialogPagada.modo === "bloqueado" &&
+                  `Para marcarla como pagada primero hay que registrar los abonos. Total ${dialogPagada.factura.monto_total.toFixed(2)} ${dialogPagada.factura.moneda}, saldo pendiente ${saldoPendiente(dialogPagada.factura).toFixed(2)} ${dialogPagada.factura.moneda}. Al registrar un abono que cubra el saldo, se marca sola como pagada.`}
+                {dialogPagada.modo === "confirmar" &&
+                  "Los abonos registrados ya cubren el total de la factura. Al confirmar pasará al archivo de pagadas."}
+                {dialogPagada.modo === "reabrir" &&
+                  "La factura volverá a la lista de pendientes por pagar. Los abonos ya registrados no se borran."}
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogPagada(null)}>
+                  {dialogPagada.modo === "bloqueado" ? "Cerrar" : "Cancelar"}
+                </Button>
+                {dialogPagada.modo === "bloqueado" ? (
+                  <Button
+                    onClick={() => {
+                      const f = dialogPagada.factura;
+                      setDialogPagada(null);
+                      abrirAbono(f);
+                    }}
+                  >
+                    <Receipt className="h-4 w-4 mr-1" /> Registrar abono
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={async () => {
+                      const f = dialogPagada.factura;
+                      setDialogPagada(null);
+                      await togglePagada(f);
+                    }}
+                  >
+                    {dialogPagada.modo === "confirmar" ? "Sí, marcar como pagada" : "Sí, volver a pendiente"}
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!facturaEtiquetas} onOpenChange={(o) => !o && setFacturaEtiquetas(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Etiquetas de la factura</DialogTitle>
+            <DialogDescription>
+              {facturaEtiquetas &&
+                `Factura ${facturaEtiquetas.numero_factura || "sin número"} · código de barras de cada producto para pegar en la mercancía.`}
+            </DialogDescription>
+          </DialogHeader>
+          {itemsEtiqueta === null ? (
+            <p className="text-sm text-muted-foreground py-4">Cargando productos…</p>
+          ) : itemsEtiqueta.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              Esta factura no tiene productos con código de barras para etiquetar.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={porUnidad} onCheckedChange={(v) => setPorUnidad(!!v)} />
+                Una etiqueta por cada unidad recibida
+              </label>
+              <ul className="max-h-[45vh] overflow-y-auto divide-y divide-border/40 rounded-lg border border-border/40">
+                {itemsEtiqueta.map((it, idx) => (
+                  <li key={`${it.producto_id}-${idx}`} className="flex items-center justify-between gap-2 p-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{it.nombre}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {it.codigo} · recibidas: {it.recibidas}
+                      </p>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="w-16 h-8 text-center shrink-0"
+                      aria-label="Copias"
+                      disabled={porUnidad}
+                      value={copiasDe(it)}
+                      onChange={(e) =>
+                        setItemsEtiqueta((arr) =>
+                          (arr ?? []).map((x, i) =>
+                            i === idx ? { ...x, copias: Math.max(0, Number(e.target.value) || 0) } : x
+                          )
+                        )
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Total: {itemsEtiqueta.reduce((s, it) => s + copiasDe(it), 0)} etiquetas
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFacturaEtiquetas(null)}>
+              Cerrar
+            </Button>
+            <Button onClick={imprimirTodasEtiquetas} disabled={!itemsEtiqueta?.length}>
+              <Printer className="h-4 w-4 mr-1" /> Imprimir etiquetas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!facturaProveedor} onOpenChange={(o) => !o && setFacturaProveedor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar proveedor</DialogTitle>
+            <DialogDescription>
+              {facturaProveedor && `Factura ${facturaProveedor.numero_factura || "sin número"}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label>Proveedor</Label>
+            <Select value={nuevoProveedorId} onValueChange={(v) => v && setNuevoProveedorId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona…" />
+              </SelectTrigger>
+              <SelectContent>
+                {proveedores.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFacturaProveedor(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardarProveedorFactura} disabled={guardandoProveedor || !nuevoProveedorId}>
+              {guardandoProveedor ? "Guardando…" : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!facturaAbono} onOpenChange={(o) => !o && setFacturaAbono(null)}>
         <DialogContent>

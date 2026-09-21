@@ -108,6 +108,15 @@ export function FacturaWizard({
     }))
   );
   const [guardando, setGuardando] = useState(false);
+  // Líneas cuyo SKU/código ya existe (índice en `items` -> mensaje).
+  const [conflictos, setConflictos] = useState<Record<number, string>>({});
+  const limpiarConflicto = (i: number) =>
+    setConflictos((c) => {
+      if (!(i in c)) return c;
+      const n = { ...c };
+      delete n[i];
+      return n;
+    });
   const [creados, setCreados] = useState<{ nombre: string; codigo_barras: string }[]>([]);
 
   // Guarda automáticamente el progreso como borrador para que, si el usuario
@@ -383,6 +392,19 @@ export function FacturaWizard({
       return;
     }
 
+    // Las líneas deben sumar el total de la factura: si no, casi siempre es una
+    // línea perdida o una cantidad mal leída. Es una advertencia (el total puede
+    // incluir IVA u otros cargos), no un bloqueo.
+    const sumaItems = activos.reduce((s, it) => s + it.cantidad * it.precio_costo, 0);
+    const dif = Math.round((sumaItems - montoTotal) * 100) / 100;
+    if (montoTotal > 0 && Math.abs(dif) > Math.max(0.5, montoTotal * 0.01)) {
+      const seguir = window.confirm(
+        `Las líneas suman ${sumaItems.toFixed(2)} ${moneda} pero el total de la factura es ${montoTotal.toFixed(2)} ${moneda} (diferencia ${dif.toFixed(2)}).\n\nRevisa que no falte ningún producto y que las cantidades y costos estén bien.\n\n¿Registrar la factura de todos modos?`
+      );
+      if (!seguir) return;
+    }
+
+    setConflictos({});
     setGuardando(true);
     const prov = await resolverProveedor(negocioId, proveedores, { proveedorId, nombreNuevo: proveedorNuevo });
 
@@ -443,8 +465,26 @@ export function FacturaWizard({
     const json = await res.json();
     setGuardando(false);
     if (!res.ok) {
-      toast.error(json.error ?? "Error al registrar la factura");
+      if (res.status === 409 && Array.isArray(json.conflictos)) {
+        const globales = items.map((it, i) => (it.incluir ? i : -1)).filter((i) => i >= 0);
+        const mapa: Record<number, string> = {};
+        for (const c of json.conflictos as { idx: number; campo: string; valor: string; con: string }[]) {
+          const g = globales[c.idx];
+          if (g === undefined) continue;
+          const campo = c.campo === "sku" ? "El SKU" : "El código de barras";
+          mapa[g] = `${campo} “${c.valor}” ya lo tiene ${c.con}. Cámbialo, o si es el mismo producto usa “No es este / ya existe”.`;
+        }
+        setConflictos(mapa);
+      }
+      toast.error(json.error ?? "Error al registrar la factura", { duration: 10000 });
       return;
+    }
+    const fallidos: { nombre: string; error: string }[] = json.fallidos ?? [];
+    if (fallidos.length > 0) {
+      toast.error(
+        `La factura se registró, pero NO se pudo crear: ${fallidos.map((f) => `${f.nombre} (${f.error})`).join("; ")}`,
+        { duration: 20000 }
+      );
     }
     setCreados(json.creados ?? []);
     toast.success("Factura registrada");
@@ -638,6 +678,11 @@ export function FacturaWizard({
               </div>
             </div>
 
+            {conflictos[i] && (
+              <p className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
+                {conflictos[i]}
+              </p>
+            )}
             {!it.incluir ? (
               <p className="text-sm text-muted-foreground italic">Excluido de la factura</p>
             ) : (
@@ -699,7 +744,10 @@ export function FacturaWizard({
                   <Label>SKU</Label>
                   <Input
                     value={it.sku}
-                    onChange={(e) => setItem(i, "sku", e.target.value)}
+                    onChange={(e) => {
+                      setItem(i, "sku", e.target.value);
+                      limpiarConflicto(i);
+                    }}
                     onBlur={() => it.status === "NEW" && buscarProductoExistente(i)}
                   />
                 </div>
@@ -709,7 +757,10 @@ export function FacturaWizard({
                     <Input
                       className="flex-1"
                       value={it.codigo_barras}
-                      onChange={(e) => setItem(i, "codigo_barras", e.target.value)}
+                      onChange={(e) => {
+                        setItem(i, "codigo_barras", e.target.value);
+                        limpiarConflicto(i);
+                      }}
                       onBlur={() => it.status === "NEW" && buscarProductoExistente(i)}
                       placeholder={it.status === "NEW" ? "Se genera si lo dejas vacío" : ""}
                     />

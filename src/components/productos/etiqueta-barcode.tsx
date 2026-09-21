@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
+import { toast } from "sonner";
+import { imprimirEtiquetas } from "@/lib/etiquetas";
 
 // Etiqueta imprimible (código de barras + nombre) para pegar físicamente al
 // producto. El botón queda oculto al imprimir vía la variante print:hidden.
@@ -40,7 +42,11 @@ export function EtiquetaBarcode({ nombre, codigo }: { nombre: string; codigo: st
         size="sm"
         variant="outline"
         className="print:hidden"
-        onClick={() => window.print()}
+        onClick={() => {
+          if (!imprimirEtiquetas([{ nombre, codigo, copias: 1 }])) {
+            toast.error("No se pudo abrir la ventana de impresión (revisa que el navegador permita ventanas emergentes)");
+          }
+        }}
       >
         <Printer className="mr-1 h-3.5 w-3.5" /> Imprimir etiqueta
       </Button>
