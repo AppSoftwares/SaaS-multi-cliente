@@ -366,6 +366,9 @@ export interface FacturaItem {
   cantidad: number;
   precio_costo: number;
   precio_venta_sugerido: number | null;
+  // Costo de lista y % de descuento del proveedor (precio_costo es el neto).
+  costo_lista?: number | null;
+  descuento_pct?: number | null;
   subtotal: number;
   es_nuevo: boolean;
   aplicado: boolean;

@@ -51,7 +51,10 @@ interface ItemEditable {
 
 function costoConDescuento(costoLista: number, descuentoPct: number | ""): number {
   const pct = descuentoPct === "" ? 0 : Math.min(Math.max(descuentoPct, 0), 100);
-  return Math.round(costoLista * (1 - pct / 100) * 100) / 100;
+  // En centavos enteros: 3.30 * 0.75 en coma flotante da 2.4749999… y
+  // redondeaba a 2.47 en vez de 2.48.
+  const centavos = Math.round(costoLista * 100);
+  return Math.round((centavos * (100 - pct)) / 100) / 100;
 }
 
 export function FacturaWizard({
@@ -93,11 +96,11 @@ export function FacturaWizard({
       sku: it.sku ?? "",
       codigo_barras: it.codigo_barras ?? "",
       cantidad: it.cantidad,
-      // El costo guardado ya es el neto (con cualquier descuento aplicado);
-      // se retoma como costo de lista sin descuento visible para no inventar
-      // un % que no se guardó.
-      costoLista: it.precio_costo,
-      descuentoPct: "",
+      // Se retoman el costo de lista y el % de descuento guardados. En
+      // borradores anteriores a esta versión solo existe el costo neto: se usa
+      // como lista sin % para no inventar un descuento.
+      costoLista: it.costo_lista != null ? Number(it.costo_lista) : it.precio_costo,
+      descuentoPct: it.descuento_pct != null ? Number(it.descuento_pct) : "",
       precio_costo: it.precio_costo,
       precio_venta: it.precio_venta_sugerido ?? 0,
       utilidad_pct: "",
@@ -148,6 +151,8 @@ export function FacturaWizard({
             codigo_barras: it.codigo_barras || null,
             cantidad: it.cantidad,
             precio_costo: it.precio_costo,
+            costo_lista: it.costoLista,
+            descuento_pct: it.descuentoPct === "" ? null : it.descuentoPct,
             precio_venta: it.precio_venta || null,
             es_nuevo: it.status === "NEW",
           })),
@@ -428,6 +433,8 @@ export function FacturaWizard({
           codigo_barras: it.codigo_barras || null,
           cantidad: it.cantidad,
           precio_costo: it.precio_costo,
+          costo_lista: it.costoLista,
+          descuento_pct: it.descuentoPct === "" ? null : it.descuentoPct,
           aplicar_stock: aplicarStock,
         });
       } else {
@@ -448,6 +455,8 @@ export function FacturaWizard({
           unidad_medida: cat.unidad_medida,
           cantidad: it.cantidad,
           precio_costo: it.precio_costo,
+          costo_lista: it.costoLista,
+          descuento_pct: it.descuentoPct === "" ? null : it.descuentoPct,
           precio_venta: it.precio_venta,
           aplicar_stock: aplicarStock,
         });
@@ -508,6 +517,12 @@ export function FacturaWizard({
     router.refresh();
     setVista("listo");
   }
+
+  // Resumen de descuentos por producto para mostrar en la revisión.
+  const lineasActivas = items.filter((it) => it.incluir);
+  const totalLista = Math.round(lineasActivas.reduce((s, it) => s + it.cantidad * it.costoLista, 0) * 100) / 100;
+  const totalNeto = Math.round(lineasActivas.reduce((s, it) => s + it.cantidad * it.precio_costo, 0) * 100) / 100;
+  const hayDescuentosVista = lineasActivas.some((it) => it.descuentoPct !== "" && it.descuentoPct > 0);
 
   if (vista === "form") {
     return (
@@ -624,6 +639,25 @@ export function FacturaWizard({
           <CampoNumero value={montoTotal} onValor={(v) => setMontoTotal(Number(v) || 0)} />
         </div>
       </div>
+
+      {hayDescuentosVista && (
+        <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs space-y-2">
+          <p>
+            A costo de lista las líneas suman <b>{totalLista.toFixed(2)}</b> {moneda}; con los descuentos por producto,{" "}
+            <b>{totalNeto.toFixed(2)}</b> {moneda}.
+          </p>
+          {Math.abs(montoTotal - totalNeto) > 0.005 && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">
+                Si la factura impresa muestra los precios de lista, lo que realmente se paga es el total con descuentos.
+              </span>
+              <Button type="button" size="sm" variant="outline" onClick={() => setMontoTotal(totalNeto)}>
+                Usar {totalNeto.toFixed(2)} como total
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4 rounded-lg border p-3">
         <label className="flex items-center gap-2 text-sm">

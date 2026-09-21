@@ -16,6 +16,8 @@ interface ItemEntrada {
   unidad_medida?: string | null;
   cantidad: number;
   precio_costo: number;
+  costo_lista?: number | null;
+  descuento_pct?: number | null;
   precio_venta?: number | null;
   aplicar_stock: boolean;
 }
@@ -268,6 +270,8 @@ export async function POST(req: NextRequest) {
       codigo_barras: item.codigo_barras || null,
       cantidad,
       precio_costo: precioCosto,
+      costo_lista: item.costo_lista ?? null,
+      descuento_pct: item.descuento_pct ?? null,
       precio_venta_sugerido: item.precio_venta ?? null,
       subtotal: cantidad * precioCosto,
       es_nuevo: item.status === "NEW",

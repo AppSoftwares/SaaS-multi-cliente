@@ -10,6 +10,8 @@ interface ItemBorrador {
   codigo_barras?: string | null;
   cantidad: number;
   precio_costo: number;
+  costo_lista?: number | null;
+  descuento_pct?: number | null;
   precio_venta?: number | null;
   es_nuevo: boolean;
 }
@@ -97,6 +99,8 @@ export async function POST(req: NextRequest) {
         codigo_barras: it.codigo_barras || null,
         cantidad: Number(it.cantidad) || 0,
         precio_costo: Number(it.precio_costo) || 0,
+        costo_lista: it.costo_lista ?? null,
+        descuento_pct: it.descuento_pct ?? null,
         precio_venta_sugerido: it.precio_venta ?? null,
         subtotal: (Number(it.cantidad) || 0) * (Number(it.precio_costo) || 0),
         es_nuevo: !!it.es_nuevo,
