@@ -303,6 +303,22 @@ export function FacturaWizard({
     setItem(i, "precio_venta", precioConGanancia(costo, utilidad));
   }
 
+  // Sin utilidad, el precio de venta arranca en el costo base (con el descuento
+  // ya aplicado) y desde ahí sube con la utilidad. Solo se reajusta solo si el
+  // precio sigue siendo ese valor automático o 0: si el usuario lo escribió a
+  // mano, no se pisa.
+  function recalcularPrecioVenta(i: number, it: ItemEditable, nuevoBase: number, utilidad: number | "") {
+    if (it.status !== "NEW") return;
+    if (utilidad !== "") {
+      calcularPrecioVentaItem(i, nuevoBase, utilidad);
+      return;
+    }
+    const baseAnterior = costoBase(it.costoLista, it.precio_costo);
+    if (nuevoBase > 0 && (it.precio_venta === 0 || Math.abs(it.precio_venta - baseAnterior) < 0.005)) {
+      setItem(i, "precio_venta", nuevoBase);
+    }
+  }
+
   function aplicarGananciaATodos(pct: number, base: BaseGanancia) {
     setItems((arr) =>
       arr.map((it) =>
@@ -316,14 +332,18 @@ export function FacturaWizard({
   function cambiarBaseGanancia(base: BaseGanancia) {
     setBaseGanancia(base);
     setItems((arr) =>
-      arr.map((it) =>
-        it.status === "NEW" && it.incluir && it.utilidad_pct !== ""
-          ? {
-              ...it,
-              precio_venta: precioConGanancia(costoBase(it.costoLista, it.precio_costo, base), Number(it.utilidad_pct)),
-            }
-          : it
-      )
+      arr.map((it) => {
+        if (it.status !== "NEW" || !it.incluir) return it;
+        const nuevoBase = costoBase(it.costoLista, it.precio_costo, base);
+        if (it.utilidad_pct !== "") {
+          return { ...it, precio_venta: precioConGanancia(nuevoBase, Number(it.utilidad_pct)) };
+        }
+        const baseAnterior = costoBase(it.costoLista, it.precio_costo);
+        if (nuevoBase > 0 && (it.precio_venta === 0 || Math.abs(it.precio_venta - baseAnterior) < 0.005)) {
+          return { ...it, precio_venta: nuevoBase };
+        }
+        return it;
+      })
     );
   }
 
@@ -423,7 +443,8 @@ export function FacturaWizard({
           costoLista: it.item_ia.precio_costo,
           descuentoPct: "",
           precio_costo: it.item_ia.precio_costo,
-          precio_venta: 0,
+          // Sin utilidad todavía: el precio de venta arranca en el costo.
+          precio_venta: it.item_ia.precio_costo,
           utilidad_pct: "",
           catMadre: "",
           catSub: "",
@@ -887,7 +908,7 @@ export function FacturaWizard({
                       const neto = costoConDescuento(costoLista, it.descuentoPct);
                       setItem(i, "costoLista", costoLista);
                       setItem(i, "precio_costo", neto);
-                      if (it.status === "NEW") calcularPrecioVentaItem(i, costoBase(costoLista, neto), it.utilidad_pct);
+                      recalcularPrecioVenta(i, it, costoBase(costoLista, neto), it.utilidad_pct);
                     }}
                   />
                 </div>
@@ -901,7 +922,7 @@ export function FacturaWizard({
                       const neto = costoConDescuento(it.costoLista, descuentoPct);
                       setItem(i, "descuentoPct", descuentoPct);
                       setItem(i, "precio_costo", neto);
-                      if (it.status === "NEW") calcularPrecioVentaItem(i, costoBase(it.costoLista, neto), it.utilidad_pct);
+                      recalcularPrecioVenta(i, it, costoBase(it.costoLista, neto), it.utilidad_pct);
                     }}
                   />
                 </div>
@@ -979,7 +1000,13 @@ export function FacturaWizard({
                         value={it.utilidad_pct}
                         onValor={(pct) => {
                           setItem(i, "utilidad_pct", pct);
-                          calcularPrecioVentaItem(i, costoBase(it.costoLista, it.precio_costo), pct);
+                          const base = costoBase(it.costoLista, it.precio_costo);
+                          // Sin utilidad (campo vacío) el precio vuelve al costo base.
+                          if (pct === "") {
+                            if (base > 0) setItem(i, "precio_venta", base);
+                          } else {
+                            calcularPrecioVentaItem(i, base, pct);
+                          }
                         }}
                       />
                     </div>
