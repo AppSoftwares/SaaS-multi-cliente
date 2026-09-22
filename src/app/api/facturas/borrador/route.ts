@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { calcularVencimiento, hoyVenezuela } from "@/lib/vencimiento";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,9 @@ export async function POST(req: NextRequest) {
   const f = body.factura ?? {};
   const items: ItemBorrador[] = Array.isArray(body.items) ? body.items : [];
 
+  const diasCredito =
+    f.dias_credito != null && Number(f.dias_credito) >= 0 ? Math.round(Number(f.dias_credito)) : null;
+
   const datosFactura = {
     negocio_id: negocioId,
     proveedor_id: f.proveedor_id || null,
@@ -62,6 +66,8 @@ export async function POST(req: NextRequest) {
     fecha: f.fecha || null,
     moneda: f.moneda === "USD" ? "USD" : "BS",
     monto_total: Number(f.monto_total) || 0,
+    dias_credito: diasCredito,
+    fecha_vencimiento: calcularVencimiento(f.fecha || hoyVenezuela(), diasCredito),
     imagen_url: f.imagen_url || null,
     estado: "borrador" as const,
     updated_at: new Date().toISOString(),

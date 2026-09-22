@@ -20,6 +20,7 @@ import { comprimirYSubirFactura } from "@/lib/storage";
 import { resolverCatalogos, resolverProveedor } from "@/lib/catalogos";
 import { generarCodigoBarrasInterno } from "@/lib/barcode";
 import { CampoNumero } from "@/components/captura/campo-numero";
+import { DIAS_ALERTA_VENCIMIENTO, calcularVencimiento, formatoFecha, hoyVenezuela } from "@/lib/vencimiento";
 import { SelectorCombo, SelectorCategoria, SelectorProveedor } from "@/components/captura/selectores";
 import { EtiquetaBarcode } from "@/components/productos/etiqueta-barcode";
 import { DEMO } from "@/lib/demo";
@@ -135,6 +136,8 @@ export function FacturaWizard({
   const [fecha, setFecha] = useState(borradorInicial?.factura.fecha ?? "");
   const [moneda, setMoneda] = useState<"BS" | "USD">(borradorInicial?.factura.moneda ?? "BS");
   const [montoTotal, setMontoTotal] = useState(borradorInicial?.factura.monto_total ?? 0);
+  // Plazo que da el proveedor (0 = de contado). Vacío = sin definir.
+  const [diasCredito, setDiasCredito] = useState<number | "">(borradorInicial?.factura.dias_credito ?? "");
   const [pagada, setPagada] = useState(false);
   const [aplicarStock, setAplicarStock] = useState(true);
 
@@ -192,6 +195,7 @@ export function FacturaWizard({
             fecha: fecha || null,
             moneda,
             monto_total: montoTotal,
+            dias_credito: diasCredito === "" ? null : diasCredito,
             imagen_url: imagenUrl,
           },
           items: items.map((it) => ({
@@ -230,7 +234,7 @@ export function FacturaWizard({
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, numeroFactura, fecha, moneda, montoTotal, proveedorId, proveedorNuevo, vista]);
+  }, [items, numeroFactura, fecha, moneda, montoTotal, diasCredito, proveedorId, proveedorNuevo, vista]);
 
   async function cancelar() {
     if (facturaIdRef.current && !DEMO) {
@@ -411,6 +415,7 @@ export function FacturaWizard({
     setFecha(r.fecha ?? "");
     setMoneda(r.moneda);
     setMontoTotal(r.monto_total);
+    if (r.dias_credito != null) setDiasCredito(r.dias_credito);
     setItems(
       r.items.map((it) => {
         if (it.status === "EXISTING") {
@@ -596,6 +601,7 @@ export function FacturaWizard({
           fecha: fecha || null,
           moneda,
           monto_total: montoTotal,
+          dias_credito: diasCredito === "" ? null : diasCredito,
           pagada,
           imagen_url: imagenUrl,
         },
@@ -743,7 +749,7 @@ export function FacturaWizard({
           <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>Fecha</Label>
+          <Label>Fecha de recepción</Label>
           <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
         <div className="space-y-1">
@@ -761,6 +767,40 @@ export function FacturaWizard({
         <div className="space-y-1">
           <Label>Monto total</Label>
           <CampoNumero value={montoTotal} onValor={(v) => setMontoTotal(Number(v) || 0)} />
+        </div>
+        <div className="col-span-2 space-y-1">
+          <Label>Días de crédito</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-24">
+              <CampoNumero entero permitirVacio placeholder="Ej: 30" value={diasCredito} onValor={setDiasCredito} />
+            </div>
+            {([["Contado", 0], ["15 días", 15], ["30 días", 30]] as const).map(([texto, dias]) => (
+              <button
+                key={texto}
+                type="button"
+                onClick={() => setDiasCredito(dias)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  diasCredito === dias
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const vence = calcularVencimiento(fecha || hoyVenezuela(), diasCredito === "" ? null : diasCredito);
+            return vence ? (
+              <p className="text-xs text-muted-foreground">
+                Vence el <b>{formatoFecha(vence)}</b>. Se avisará cuando falten {DIAS_ALERTA_VENCIMIENTO} días o menos.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Indica el plazo que da el proveedor para que el sistema avise antes de que venza.
+              </p>
+            );
+          })()}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generarCodigoBarrasInterno } from "@/lib/barcode";
+import { calcularVencimiento, hoyVenezuela } from "@/lib/vencimiento";
 
 export const runtime = "nodejs";
 
@@ -96,6 +97,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const diasCredito =
+    f.dias_credito != null && Number(f.dias_credito) >= 0 ? Math.round(Number(f.dias_credito)) : null;
+
   const datosFactura = {
     negocio_id: negocioId,
     proveedor_id: f.proveedor_id || null,
@@ -103,6 +107,9 @@ export async function POST(req: NextRequest) {
     fecha: f.fecha || null,
     moneda: f.moneda === "USD" ? "USD" : "BS",
     monto_total: Number(f.monto_total) || 0,
+    dias_credito: diasCredito,
+    // Sin fecha en la factura, el plazo cuenta desde hoy (día de recepción).
+    fecha_vencimiento: calcularVencimiento(f.fecha || hoyVenezuela(), diasCredito),
     pagada: !!f.pagada,
     estado: "revision" as const,
     imagen_url: f.imagen_url || null,

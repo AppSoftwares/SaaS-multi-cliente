@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Truck, Plus, Pencil, Trash2, X } from "lucide-react";
+import { DialogoClaveEliminar } from "@/components/dialogo-clave-eliminar";
 import type { Proveedor } from "@/lib/types";
 
 interface FormProveedor {
@@ -108,16 +109,29 @@ export function GestionProveedores({
     recargar();
   }
 
-  async function eliminar(p: Proveedor) {
-    if (!confirm(`¿Eliminar a ${p.nombre}?`)) return;
+  // Eliminar pide la clave de eliminación (solo la tiene el dueño); el servidor
+  // la valida en eliminar_proveedor, ya no se puede borrar por la API directa.
+  const [provEliminar, setProvEliminar] = useState<Proveedor | null>(null);
+
+  async function confirmarEliminar(clave: string): Promise<string | null> {
+    const p = provEliminar;
+    if (!p) return null;
     if (DEMO) {
       setProveedores((ps) => ps.filter((x) => x.id !== p.id));
-      return toast.success("(Demo) Proveedor eliminado");
+      setProvEliminar(null);
+      toast.success("(Demo) Proveedor eliminado");
+      return null;
     }
-    const { error } = await supabase.from("proveedores").delete().eq("id", p.id);
-    if (error) return toast.error(error.message);
+    const { error } = await supabase.rpc("eliminar_proveedor", { p_id: p.id, p_clave: clave });
+    if (error) return error.message;
+    setProvEliminar(null);
     toast.success("Proveedor eliminado");
     recargar();
+    return null;
+  }
+
+  function eliminar(p: Proveedor) {
+    setProvEliminar(p);
   }
 
   return (
@@ -216,6 +230,18 @@ export function GestionProveedores({
           )}
         </CardContent>
       </Card>
+
+      <DialogoClaveEliminar
+        abierto={!!provEliminar}
+        titulo="Eliminar proveedor"
+        descripcion={
+          provEliminar
+            ? `Se eliminará a ${provEliminar.nombre}. Sus facturas se conservan, pero quedarán sin proveedor.`
+            : ""
+        }
+        onCerrar={() => setProvEliminar(null)}
+        onConfirmar={confirmarEliminar}
+      />
     </div>
   );
 }

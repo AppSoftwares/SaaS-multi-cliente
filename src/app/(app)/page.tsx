@@ -9,7 +9,17 @@ import { BotonSalir } from "@/components/boton-salir";
 import { BotonTema } from "@/components/boton-tema";
 import { Contador } from "@/components/contador";
 import { DEMO, demoKpis, demoProductos } from "@/lib/demo";
-import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree, Truck, Landmark, CreditCard } from "lucide-react";
+import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree, Truck, Landmark, CreditCard, AlarmClock } from "lucide-react";
+import { DIAS_ALERTA_VENCIMIENTO, estadoVencimiento, hoyVenezuela, sumarDias } from "@/lib/vencimiento";
+
+interface FilaAlertaFactura {
+  id: string;
+  numero_factura: string | null;
+  monto_total: number;
+  moneda: "BS" | "USD";
+  fecha_vencimiento: string | null;
+  proveedores: { nombre: string } | { nombre: string }[] | null;
+}
 
 export default async function DashboardPage() {
   const sesion = await getSesion();
@@ -18,6 +28,7 @@ export default async function DashboardPage() {
   let kpis: KpisDashboard | null;
   let alertas: Pick<Producto, "id" | "nombre" | "cantidad" | "stock_minimo" | "unidad_medida">[];
   let tasas: TasasNegocio | null = null;
+  let facturasAlerta: FilaAlertaFactura[] = [];
 
   if (DEMO) {
     kpis = demoKpis;
@@ -38,6 +49,21 @@ export default async function DashboardPage() {
     alertas = (bajoStock ?? []).filter(
       (p) => p.cantidad <= p.stock_minimo
     ) as Pick<Producto, "id" | "nombre" | "cantidad" | "stock_minimo" | "unidad_medida">[];
+
+    // Facturas de proveedor pendientes ya vencidas o por vencer (≤ 3 días).
+    if (esAdmin) {
+      const limite = sumarDias(hoyVenezuela(), DIAS_ALERTA_VENCIMIENTO);
+      const { data: fa } = await supabase
+        .from("facturas")
+        .select("id, numero_factura, monto_total, moneda, fecha_vencimiento, pagada, proveedores(nombre)")
+        .eq("pagada", false)
+        .neq("estado", "borrador")
+        .not("fecha_vencimiento", "is", null)
+        .lte("fecha_vencimiento", limite)
+        .order("fecha_vencimiento")
+        .limit(10);
+      facturasAlerta = (fa ?? []) as unknown as FilaAlertaFactura[];
+    }
 
     if (sesion?.negocioId) {
       const { data: neg } = await supabase
@@ -86,6 +112,35 @@ export default async function DashboardPage() {
           )}
         </nav>
       </header>
+
+      {/* Facturas de proveedor por vencer / vencidas */}
+      {facturasAlerta.length > 0 && (
+        <Link href="/proveedores" className="block press">
+          <Card className="!border-red-500/60 bg-red-500/5">
+            <CardContent className="p-4 space-y-2">
+              <p className="font-semibold text-red-600 dark:text-red-400 flex items-center gap-2 text-sm">
+                <AlarmClock className="h-4 w-4" /> Facturas de proveedor por pagar
+              </p>
+              <ul className="space-y-1">
+                {facturasAlerta.map((f) => {
+                  const ev = estadoVencimiento({ pagada: false, fecha_vencimiento: f.fecha_vencimiento });
+                  const prov = Array.isArray(f.proveedores) ? f.proveedores[0] : f.proveedores;
+                  return (
+                    <li key={f.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate">
+                        {f.numero_factura || "Sin número"} — {prov?.nombre ?? "Sin proveedor"} ·{" "}
+                        {f.monto_total.toFixed(2)} {f.moneda}
+                      </span>
+                      <span className="shrink-0 font-semibold text-red-600 dark:text-red-400">{ev.texto}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-[11px] text-muted-foreground">Toca para ver y registrar abonos.</p>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">

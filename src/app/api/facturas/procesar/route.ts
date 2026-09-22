@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
     proveedor_nombre: datosIA.proveedor_nombre,
     moneda: datosIA.moneda,
     monto_total: datosIA.monto_total,
+    dias_credito: datosIA.dias_credito ?? null,
     items,
   };
 

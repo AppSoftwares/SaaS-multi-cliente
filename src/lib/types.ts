@@ -348,6 +348,8 @@ export interface Factura {
   imagen_url: string | null;
   notas: string | null;
   proveedor_nombre_nuevo: string | null;
+  dias_credito?: number | null;
+  fecha_vencimiento?: string | null;
   usuario_id: string | null;
   created_at: string;
   updated_at: string;
@@ -523,6 +525,7 @@ export interface ResultadoProcesarFactura {
   proveedor_nombre: string | null;
   moneda: "BS" | "USD";
   monto_total: number;
+  dias_credito?: number | null;
   items: ItemFacturaProcesado[];
 }
 

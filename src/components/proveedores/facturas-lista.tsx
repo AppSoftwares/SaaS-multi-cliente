@@ -23,9 +23,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy, Archive, Tags, UserPen } from "lucide-react";
+import { FileText, Image as ImageIcon, Printer, Receipt, Truck, Copy, Archive, Tags, Pencil, Trash2, AlarmClock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { imprimirEtiquetas } from "@/lib/etiquetas";
+import { CampoNumero } from "@/components/captura/campo-numero";
+import { DialogoClaveEliminar } from "@/components/dialogo-clave-eliminar";
+import { DIAS_ALERTA_VENCIMIENTO, calcularVencimiento, estadoVencimiento, formatoFecha, hoyVenezuela } from "@/lib/vencimiento";
 import { toast } from "sonner";
 import { formatFecha } from "@/lib/format";
 import { linkWhatsApp } from "@/lib/whatsapp";
@@ -81,10 +84,15 @@ export function FacturasLista({
   const [itemsEtiqueta, setItemsEtiqueta] = useState<ItemEtiqueta[] | null>(null);
   const [porUnidad, setPorUnidad] = useState(false);
 
-  // Cambiar el proveedor de una factura ya registrada.
+  // Editar una factura ya registrada: proveedor y días de crédito.
   const [facturaProveedor, setFacturaProveedor] = useState<FacturaLista | null>(null);
   const [nuevoProveedorId, setNuevoProveedorId] = useState("");
+  const [diasEdit, setDiasEdit] = useState<number | "">("");
   const [guardandoProveedor, setGuardandoProveedor] = useState(false);
+
+  // Eliminar una factura (pide la clave del dueño).
+  const [facturaEliminar, setFacturaEliminar] = useState<FacturaLista | null>(null);
+  const [revertirInventario, setRevertirInventario] = useState(true);
 
   async function abrirEtiquetas(f: FacturaLista) {
     setFacturaEtiquetas(f);
@@ -135,14 +143,18 @@ export function FacturasLista({
   }
 
   async function guardarProveedorFactura() {
-    if (!facturaProveedor || !nuevoProveedorId) return;
+    if (!facturaProveedor) return;
     const prov = proveedores.find((p) => p.id === nuevoProveedorId);
+    const dias = diasEdit === "" ? null : diasEdit;
+    const vence = calcularVencimiento(facturaProveedor.fecha || facturaProveedor.created_at.slice(0, 10), dias);
     setGuardandoProveedor(true);
+    const cambios = {
+      ...(nuevoProveedorId ? { proveedor_id: nuevoProveedorId, proveedor_nombre_nuevo: null } : {}),
+      dias_credito: dias,
+      fecha_vencimiento: vence,
+    };
     if (!DEMO) {
-      const { error } = await supabase
-        .from("facturas")
-        .update({ proveedor_id: nuevoProveedorId, proveedor_nombre_nuevo: null })
-        .eq("id", facturaProveedor.id);
+      const { error } = await supabase.from("facturas").update(cambios).eq("id", facturaProveedor.id);
       if (error) {
         setGuardandoProveedor(false);
         return toast.error(error.message);
@@ -150,15 +162,55 @@ export function FacturasLista({
     }
     setFacturas((fs) =>
       fs.map((x) =>
-        x.id === facturaProveedor.id ? { ...x, proveedor_id: nuevoProveedorId, proveedor_nombre: prov?.nombre ?? null } : x
+        x.id === facturaProveedor.id
+          ? {
+              ...x,
+              ...(nuevoProveedorId ? { proveedor_id: nuevoProveedorId, proveedor_nombre: prov?.nombre ?? null } : {}),
+              dias_credito: dias,
+              fecha_vencimiento: vence,
+            }
+          : x
       )
     );
     setGuardandoProveedor(false);
     setFacturaProveedor(null);
-    toast.success("Proveedor actualizado");
+    toast.success("Factura actualizada");
   }
 
-  const facturasPendientes = facturas.filter((f) => !f.pagada);
+  async function confirmarEliminarFactura(clave: string): Promise<string | null> {
+    const f = facturaEliminar;
+    if (!f) return null;
+    if (DEMO) {
+      setFacturas((fs) => fs.filter((x) => x.id !== f.id));
+      setFacturaEliminar(null);
+      toast.success("(Demo) Factura eliminada");
+      return null;
+    }
+    const { data, error } = await supabase.rpc("eliminar_factura", {
+      p_factura_id: f.id,
+      p_clave: clave,
+      p_revertir_inventario: revertirInventario && f.estado !== "borrador",
+    });
+    if (error) return error.message;
+    setFacturas((fs) => fs.filter((x) => x.id !== f.id));
+    setPagos((ps) => ps.filter((p) => p.factura_id !== f.id));
+    setFacturaEliminar(null);
+    const r = data as { productos_borrados?: number; stock_revertido?: number } | null;
+    toast.success(
+      revertirInventario && (r?.productos_borrados || r?.stock_revertido)
+        ? `Factura eliminada. Inventario revertido: ${r?.productos_borrados ?? 0} producto(s) quitados y stock de ${r?.stock_revertido ?? 0} ajustado.`
+        : "Factura eliminada"
+    );
+    return null;
+  }
+
+  // Pendientes: las que vencen antes van primero (sin plazo definido, al final).
+  const hoy = hoyVenezuela();
+  const facturasPendientes = facturas
+    .filter((f) => !f.pagada)
+    .sort((a, b) => (a.fecha_vencimiento ?? "9999-12-31").localeCompare(b.fecha_vencimiento ?? "9999-12-31"));
+  const vencidas = facturasPendientes.filter((f) => estadoVencimiento(f, hoy).nivel === "vencida");
+  const porVencer = facturasPendientes.filter((f) => estadoVencimiento(f, hoy).nivel === "urgente");
   const facturasPagadas = facturas.filter((f) => f.pagada);
   const facturasVisibles = verPagadas ? facturasPagadas : facturasPendientes;
 
@@ -322,6 +374,26 @@ export function FacturasLista({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {!verPagadas && (vencidas.length > 0 || porVencer.length > 0) && (
+            <div className="m-3 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm space-y-1">
+              <p className="font-semibold text-red-600 dark:text-red-400 flex items-center gap-2">
+                <AlarmClock className="h-4 w-4" />
+                {vencidas.length > 0 &&
+                  `${vencidas.length} factura${vencidas.length === 1 ? "" : "s"} vencida${vencidas.length === 1 ? "" : "s"}`}
+                {vencidas.length > 0 && porVencer.length > 0 && " · "}
+                {porVencer.length > 0 &&
+                  `${porVencer.length} por vencer (${DIAS_ALERTA_VENCIMIENTO} días o menos)`}
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                {[...vencidas, ...porVencer].map((f) => (
+                  <li key={f.id}>
+                    {f.numero_factura || "Sin número"} — {f.proveedor_nombre ?? nombreProveedor(f.proveedor_id) ?? "Sin proveedor"} ·{" "}
+                    <b>{estadoVencimiento(f, hoy).texto}</b>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {facturasVisibles.length === 0 ? (
             <p className="text-sm text-muted-foreground p-4">
               {verPagadas ? "Aún no hay facturas pagadas." : "No hay facturas pendientes por pagar."}
@@ -331,8 +403,14 @@ export function FacturasLista({
               {facturasVisibles.map((f, i) => {
                 const saldo = saldoPendiente(f);
                 const abonosF = pagosDeFactura(f.id);
+                const venc = estadoVencimiento(f, hoy);
+                const critica = venc.nivel === "urgente" || venc.nivel === "vencida";
                 return (
-                  <li key={f.id} className="stagger-item p-3 space-y-2" style={{ "--i": i } as React.CSSProperties}>
+                  <li
+                    key={f.id}
+                    className={`stagger-item p-3 space-y-2 ${critica ? "border-l-4 border-red-500 bg-red-500/5" : ""}`}
+                    style={{ "--i": i } as React.CSSProperties}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="flex h-8 w-8 items-center justify-center rounded-xl shrink-0 gradient-primary text-white glow-purple">
@@ -348,6 +426,20 @@ export function FacturasLista({
                               <> · saldo {saldo.toFixed(2)} {f.moneda}</>
                             )}
                           </p>
+                          {venc.nivel !== "sin" && (
+                            <p
+                              className={`text-xs flex items-center gap-1 ${
+                                critica
+                                  ? "font-semibold text-red-600 dark:text-red-400"
+                                  : venc.nivel === "atencion"
+                                    ? "font-medium text-amber-600 dark:text-amber-400"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              <AlarmClock className="h-3 w-3" /> {venc.texto}
+                              {f.dias_credito ? ` · ${f.dias_credito} días de crédito` : ""}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -387,9 +479,21 @@ export function FacturasLista({
                           onClick={() => {
                             setFacturaProveedor(f);
                             setNuevoProveedorId(f.proveedor_id ?? "");
+                            setDiasEdit(f.dias_credito ?? "");
                           }}
                         >
-                          <UserPen className="h-3.5 w-3.5 mr-1" /> Proveedor
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-destructive"
+                          onClick={() => {
+                            setFacturaEliminar(f);
+                            setRevertirInventario(f.estado !== "borrador");
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" /> Eliminar
                         </Button>
                         {!f.pagada && (
                           <Button variant="outline" size="sm" className="h-8" onClick={() => abrirAbono(f)}>
@@ -565,7 +669,7 @@ export function FacturasLista({
       <Dialog open={!!facturaProveedor} onOpenChange={(o) => !o && setFacturaProveedor(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cambiar proveedor</DialogTitle>
+            <DialogTitle>Editar factura</DialogTitle>
             <DialogDescription>
               {facturaProveedor && `Factura ${facturaProveedor.numero_factura || "sin número"}`}
             </DialogDescription>
@@ -585,16 +689,77 @@ export function FacturasLista({
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label>Días de crédito</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="w-24">
+                <CampoNumero entero permitirVacio placeholder="Ej: 30" value={diasEdit} onValor={setDiasEdit} />
+              </div>
+              {([["Contado", 0], ["15 días", 15], ["30 días", 30]] as const).map(([texto, dias]) => (
+                <button
+                  key={texto}
+                  type="button"
+                  onClick={() => setDiasEdit(dias)}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    diasEdit === dias
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+            {facturaProveedor && (() => {
+              const vence = calcularVencimiento(
+                facturaProveedor.fecha || facturaProveedor.created_at.slice(0, 10),
+                diasEdit === "" ? null : diasEdit
+              );
+              return (
+                <p className="text-xs text-muted-foreground">
+                  {vence
+                    ? `Vence el ${formatoFecha(vence)} (cuenta desde ${formatoFecha(facturaProveedor.fecha || facturaProveedor.created_at.slice(0, 10))}).`
+                    : "Sin plazo definido: no habrá alerta de vencimiento."}
+                </p>
+              );
+            })()}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFacturaProveedor(null)}>
               Cancelar
             </Button>
-            <Button onClick={guardarProveedorFactura} disabled={guardandoProveedor || !nuevoProveedorId}>
+            <Button onClick={guardarProveedorFactura} disabled={guardandoProveedor}>
               {guardandoProveedor ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DialogoClaveEliminar
+        abierto={!!facturaEliminar}
+        titulo="Eliminar factura"
+        descripcion={
+          facturaEliminar
+            ? `Factura ${facturaEliminar.numero_factura || "sin número"} · ${facturaEliminar.monto_total.toFixed(2)} ${facturaEliminar.moneda}. Se borran también sus abonos y no se puede deshacer.`
+            : ""
+        }
+        onCerrar={() => setFacturaEliminar(null)}
+        onConfirmar={confirmarEliminarFactura}
+        extra={
+          facturaEliminar && facturaEliminar.estado !== "borrador" ? (
+            <label className="flex items-start gap-2 text-sm rounded-lg border border-border/60 p-2">
+              <Checkbox checked={revertirInventario} onCheckedChange={(v) => setRevertirInventario(!!v)} className="mt-0.5" />
+              <span>
+                También revertir el inventario: quita los productos que creó esta factura y resta el stock que sumó.
+                <span className="block text-xs text-muted-foreground">
+                  Si esos productos ya se vendieron, no se podrá revertir y no se eliminará nada; en ese caso desmarca esta
+                  opción para eliminar solo la factura.
+                </span>
+              </span>
+            </label>
+          ) : null
+        }
+      />
 
       <Dialog open={!!facturaAbono} onOpenChange={(o) => !o && setFacturaAbono(null)}>
         <DialogContent>

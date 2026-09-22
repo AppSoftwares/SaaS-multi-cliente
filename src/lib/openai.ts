@@ -64,6 +64,10 @@ export const EsquemaFacturaIA = z.object({
   proveedor_nombre: z.string().nullable().describe("Nombre del proveedor/empresa emisora si aparece; si no, null."),
   moneda: z.enum(["BS", "USD"]).describe("Moneda en la que están expresados los montos de la factura."),
   monto_total: z.number().describe("Monto total de la factura. Si no es legible, 0."),
+  dias_credito: z
+    .number()
+    .nullable()
+    .describe("Días de crédito que otorga el proveedor (ej. 15 o 30) si la factura lo indica; si es de contado o no aparece, null."),
   items: z
     .array(
       z.object({
