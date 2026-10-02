@@ -18,7 +18,7 @@ export async function POST(req:Request){
  if(input.accion==="mensaje"){const preview=await morganPreview(q,p);if(!preview.paymentConfigured)throw Error("Completa los datos de pago antes de enviar el total");return NextResponse.json({mensaje:preview.mensaje,url:"https://wa.me/"+q.telefono+"?text="+encodeURIComponent(preview.mensaje)})}
  const {error:approve}=await actor.rpc("morgan_aprobar_pago",{p_id:input.id,p_comprobante:input.comprobante});if(approve)throw Error("No se pudo aprobar. Verifica el comprobante, el estado y los permisos.");
  const text="Pago aprobado en "+(await morganPaymentConfig()).brand+". Pedido #"+input.id.slice(0,8)+". "+(q.tipo_entrega==="retiro"?"El comercio coordinará contigo el retiro.":"El comercio coordinará contigo el envío.");
- const sent=p.morgan_pago_aprobado_at?{ok:false}:await sendMorganText(q.telefono,text);
+ let sent={ok:false};try{const callback=await fetch('https://morgan-ai.vercel.app/api/integraciones/whatsapp/evento',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.MORGAN_INTEGRATION_TOKEN},body:JSON.stringify({slug:'ferreteria-joel',accion:'avisar_pago',solicitudId:q.solicitud_id}),signal:AbortSignal.timeout(15000)});if(callback.ok)sent={ok:!!(await callback.json()).ok}}catch{};
  return NextResponse.json({ok:true,aviso:sent.ok?"Pago aprobado y aviso enviado.":"Pago aprobado. Puedes enviar el aviso por WhatsApp.",url:sent.ok?null:"https://wa.me/"+q.telefono+"?text="+encodeURIComponent(text)});
  }catch(e){return NextResponse.json({error:e instanceof z.ZodError?"Datos inválidos":e instanceof Error?e.message:"No se pudo actualizar"},{status:409})}
 }

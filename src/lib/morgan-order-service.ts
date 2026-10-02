@@ -15,7 +15,10 @@ export async function morganPaymentConfig(){
  if(typeof business.morgan_pago_instrucciones==="string"&&business.morgan_pago_instrucciones.trim())methods=[{tipo:"Indicaciones del comercio",datos:business.morgan_pago_instrucciones}];
  return {brand:"Ferretería Joel",rate:MORGAN_SOURCE.rateColumn?Number(business[MORGAN_SOURCE.rateColumn])||null:null,methods,paymentInstructions:typeof business.morgan_pago_instrucciones==="string"?business.morgan_pago_instrucciones:""};
 }
-export async function sendMorganText(phone:string,text:string){return {ok:false,motivo:"whatsapp_no_configurado"};}
+export async function sendMorganText(phone:string,text:string){
+ const base=process.env.EVOLUTION_API_URL,key=process.env.EVOLUTION_API_KEY,instance=process.env.EVOLUTION_INSTANCE;if(!base||!key||!instance)return {ok:false,motivo:'whatsapp_no_configurado'};
+ try{const state=await fetch(base.replace(/\/$/,'')+'/instance/connectionState/'+encodeURIComponent(instance),{headers:{apikey:key},signal:AbortSignal.timeout(5000),redirect:'error'});if(!state.ok||(await state.json()).instance?.state!=='open')return {ok:false,motivo:'whatsapp_desconectado'};const r=await fetch(base.replace(/\/$/,'')+'/message/sendText/'+encodeURIComponent(instance),{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({number:phone,text}),signal:AbortSignal.timeout(10000),redirect:'error'});return {ok:r.ok}}catch{return {ok:false,motivo:'whatsapp_no_disponible'}}
+}
 export async function morganPreview(q:z.infer<typeof morganPayload>,stored?:{id:string;morgan_total_centavos:number;morgan_total_bs:number}){
  const cfg=await morganPaymentConfig(),cents=stored?.morgan_total_centavos??(q.items.reduce((a,i)=>a+i.cantidad*i.precio_centavos,0)+q.delivery_centavos+(q.ajuste_centavos||0)),rate=q.cambio?.tasa??cfg.rate;
  if(!rate||cents<0||cents>100000000)throw Error("Configura una tasa válida en el panel Morgan antes de confirmar.");
