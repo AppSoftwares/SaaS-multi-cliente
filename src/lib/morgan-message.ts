@@ -1,0 +1,10 @@
+type Quote={nombre:string;detalle:string;notas?:string;tipo_entrega:"delivery"|"retiro";direccion:string;delivery_centavos:number;ajuste_centavos?:number;cambio?:{fuente:string;tasa:number};no_disponibles?:{nombre:string;cantidad:number;nota?:string}[];items:{nombre:string;cantidad:number;precio_centavos:number;nota?:string}[]};
+export function morganOrderMessage(brand:string,id:string,q:Quote,totalUsd:number,totalBs:number,methods:{tipo:string;datos:string}[]){
+ const money=(c:number)=>`$${(c/100).toFixed(2)}`;
+ const items=q.items.map((i,n)=>`${n+1}. ${i.nombre}\n   ${i.cantidad} × ${money(i.precio_centavos)} = ${money(i.cantidad*i.precio_centavos)}${i.nota?`\n   Nota: ${i.nota}`:""}`).join("\n\n");
+ const subtotal=q.items.reduce((a,i)=>a+i.cantidad*i.precio_centavos,0);
+ const unavailable=q.no_disponibles?.length?`\n\nNO DISPONIBLES (excluidos)\n${q.no_disponibles.map(i=>`• ${i.cantidad} × ${i.nombre}${i.nota?` — ${i.nota}`:""}`).join("\n")}`:"";
+ const notes=[q.detalle?`Solicitud del cliente: ${q.detalle}`:"",q.notas?`Notas del comercio: ${q.notas}`:""].filter(Boolean).join("\n");
+ const rates={bcv_usd:"BCV dólar",bcv_eur:"BCV euro, referencia comercial",binance:"Binance USDT"};
+ return `${brand} · Pedido #${id.slice(0,8)}\nConfirmado por el comercio\nCliente: ${q.nombre}\n\nARTÍCULOS\n${items}${unavailable}${notes?`\n\nNOTAS\n${notes}`:""}\n\nENTREGA\n${q.tipo_entrega==="retiro"?"Retiro en el local":`Delivery\nDirección: ${q.direccion}`}\n\nRESUMEN\nArtículos: ${money(subtotal)}\nDelivery: ${money(q.delivery_centavos)}\n${q.ajuste_centavos?`${q.ajuste_centavos<0?"Descuento":"Recargo"}: ${money(Math.abs(q.ajuste_centavos))}\n`:""}TOTAL: $${totalUsd.toFixed(2)} / Bs ${totalBs.toFixed(2)}${q.cambio?`\nReferencia: ${rates[q.cambio.fuente as keyof typeof rates]||q.cambio.fuente} · ${q.cambio.tasa} Bs por unidad`:""}\n\nDATOS DE PAGO\n${methods.map(m=>`${m.tipo}: ${m.datos}`).join("\n")}\n\nEnvía tu comprobante por este WhatsApp, indicando #${id.slice(0,8)}. El administrador verificará el pago antes de despachar o entregar.`;
+}
