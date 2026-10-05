@@ -13,7 +13,7 @@ export type Rol =
   | "LIDER_PATIO"
   | "DELIVERY";
 
-export type ModuloPermiso = "inventario" | "facturas" | "caja" | "finanzas" | "delivery" | "patio";
+export type ModuloPermiso = "inventario" | "facturas" | "caja" | "apertura_caja" | "finanzas" | "delivery" | "patio";
 export type NivelPermiso = "ver" | "editar";
 export type MapaPermisos = Partial<Record<ModuloPermiso, NivelPermiso>>;
 
