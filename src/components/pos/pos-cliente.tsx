@@ -104,6 +104,7 @@ export function PosCliente({
   ivaTasa,
   igtfTasa,
   turnoInicial,
+  puedeAbrirCaja,
 }: {
   metodosPago: MetodoPago[];
   negocioNombre: string;
@@ -112,6 +113,7 @@ export function PosCliente({
   ivaTasa: number;
   igtfTasa: number;
   turnoInicial: TurnoCaja | null;
+  puedeAbrirCaja: boolean;
 }) {
   const router = useRouter();
   const [turno, setTurno] = useState<TurnoCaja | null>(turnoInicial);
@@ -676,6 +678,20 @@ export function PosCliente({
   }
 
   // --- Sin turno abierto: exige abrir caja antes de vender ---
+  if (!turno && !puedeAbrirCaja) {
+    return (
+      <div className="space-y-4 animate-in-up">
+        <h1 className="text-2xl font-bold text-gradient">Caja</h1>
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">La caja está cerrada.</p>
+            <p>El líder de caja debe abrirla con el conteo inicial para empezar a vender.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!turno) {
     return (
       <div className="space-y-4 animate-in-up">

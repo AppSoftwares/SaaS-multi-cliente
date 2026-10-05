@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSesion } from "@/lib/auth";
-import type { KpisDashboard, Producto, TasasNegocio } from "@/lib/types";
+import type { KpisDashboard, MapaPermisos, Producto, TasasNegocio } from "@/lib/types";
+import { puede } from "@/lib/permisos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +11,7 @@ import { BotonSalir } from "@/components/boton-salir";
 import { BotonTema } from "@/components/boton-tema";
 import { Contador } from "@/components/contador";
 import { DEMO, demoKpis, demoProductos } from "@/lib/demo";
-import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree, Truck, Landmark, CreditCard, AlarmClock } from "lucide-react";
+import { ScanLine, FileSpreadsheet, AlertTriangle, Package, DollarSign, Coins, Users, FolderTree, Truck, Landmark, CreditCard, AlarmClock, ClipboardCheck } from "lucide-react";
 import { DIAS_ALERTA_VENCIMIENTO, estadoVencimiento, hoyVenezuela, sumarDias } from "@/lib/vencimiento";
 
 interface FilaAlertaFactura {
@@ -24,6 +26,10 @@ interface FilaAlertaFactura {
 export default async function DashboardPage() {
   const sesion = await getSesion();
   const esAdmin = sesion?.rol === "ADMIN";
+  // Cada rol de operación entra directo a su pantalla de trabajo.
+  const aterrizaje: Partial<Record<string, string>> = { DELIVERY: "/delivery", LIDER_PATIO: "/patio", VENDEDOR: "/pos" };
+  if (!DEMO && sesion?.rol && aterrizaje[sesion.rol]) redirect(aterrizaje[sesion.rol]!);
+  let permisos: MapaPermisos = {};
 
   let kpis: KpisDashboard | null;
   let alertas: Pick<Producto, "id" | "nombre" | "cantidad" | "stock_minimo" | "unidad_medida">[];
@@ -36,6 +42,8 @@ export default async function DashboardPage() {
     tasas = { tasa_bcv: 639.7, tasa_binance: 737, tasa_actualizada_at: new Date().toISOString() };
   } else {
     const supabase = await createClient();
+    const { data: mp } = await supabase.rpc("mis_permisos");
+    permisos = ((mp as { modulos?: MapaPermisos } | null)?.modulos ?? {}) as MapaPermisos;
     const { data: kpisRaw } = await supabase.rpc("kpis_dashboard");
     kpis = kpisRaw as KpisDashboard | null;
 
@@ -98,9 +106,15 @@ export default async function DashboardPage() {
         </div>
         <nav className="flex flex-wrap gap-2" aria-label="Accesos">
           <Acceso href="/proveedores" label="Proveedores y facturas" icon={<Truck className="h-4 w-4" />} />
+          {puede(permisos, "patio", "ver") && <Acceso href="/patio" label="Patio" icon={<ClipboardCheck className="h-4 w-4" />} />}
+          {puede(permisos, "delivery", "ver") && (
+            <Acceso href="/delivery" label="Delivery" icon={<Truck className="h-4 w-4" />} />
+          )}
+          {puede(permisos, "finanzas", "ver") && (
+            <Acceso href="/finanzas" label="Finanzas" icon={<Landmark className="h-4 w-4" />} />
+          )}
           {esAdmin && (
             <>
-              <Acceso href="/finanzas" label="Finanzas" icon={<Landmark className="h-4 w-4" />} />
               <Acceso href="/creditos" label="Créditos a clientes" icon={<CreditCard className="h-4 w-4" />} />
               <Acceso
                 href="/catalogos"

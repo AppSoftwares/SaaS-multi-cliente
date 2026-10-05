@@ -11,10 +11,12 @@ import {
   DEMO_IGTF_TASA,
   demoTurnoAbierto,
 } from "@/lib/demo";
-import type { MetodoPago, TurnoCaja } from "@/lib/types";
+import type { MapaPermisos, MetodoPago, TurnoCaja } from "@/lib/types";
+import { puede } from "@/lib/permisos";
 
 export default async function PosPage() {
   const sesion = await getSesion();
+  let puedeAbrirCaja = true;
 
   let metodosPago: MetodoPago[];
   let negocioNombre: string;
@@ -34,6 +36,8 @@ export default async function PosPage() {
     turnoAbierto = demoTurnoAbierto;
   } else {
     const supabase = await createClient();
+    const { data: mp } = await supabase.rpc("mis_permisos");
+    puedeAbrirCaja = puede(((mp as { modulos?: MapaPermisos } | null)?.modulos ?? {}) as MapaPermisos, "apertura_caja", "editar");
     const [metodosRes, negocioRes, turnoRes] = await Promise.all([
       supabase.from("metodos_pago").select("*").eq("activo", true).order("tipo"),
       supabase
@@ -41,7 +45,7 @@ export default async function PosPage() {
         .select("tasa_bcv, tasa_binance, iva_tasa, igtf_tasa")
         .eq("id", sesion?.negocioId ?? "")
         .maybeSingle(),
-      supabase.from("turnos_caja").select("*").eq("usuario_id", sesion?.userId ?? "").eq("estado", "abierto").maybeSingle(),
+      supabase.from("turnos_caja").select("*").eq("estado", "abierto").maybeSingle(),
     ]);
     metodosPago = (metodosRes.data ?? []) as MetodoPago[];
     tasaBcv = negocioRes.data?.tasa_bcv ?? null;
@@ -61,6 +65,7 @@ export default async function PosPage() {
       ivaTasa={ivaTasa}
       igtfTasa={igtfTasa}
       turnoInicial={turnoAbierto}
+      puedeAbrirCaja={puedeAbrirCaja}
     />
   );
 }

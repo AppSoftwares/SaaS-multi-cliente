@@ -17,6 +17,7 @@ import type { BorradorResumen } from "@/app/(app)/proveedores/page";
 export function ProveedoresTabs({
   negocioId,
   esAdmin,
+  puedeVerFacturas,
   proveedores,
   facturas,
   pagos,
@@ -25,6 +26,7 @@ export function ProveedoresTabs({
 }: {
   negocioId: string;
   esAdmin: boolean;
+  puedeVerFacturas: boolean;
   proveedores: Proveedor[];
   facturas: (Factura & { proveedor_nombre?: string | null })[];
   pagos: PagoProveedor[];
@@ -75,16 +77,16 @@ export function ProveedoresTabs({
     <Tabs defaultValue="proveedores">
       <TabsList>
         <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
-        {esAdmin && <TabsTrigger value="facturas">Facturas</TabsTrigger>}
+        {puedeVerFacturas && <TabsTrigger value="facturas">Facturas</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="proveedores">
         <GestionProveedores negocioId={negocioId} esAdmin={esAdmin} inicial={proveedores} />
       </TabsContent>
 
-      {esAdmin && (
+      {puedeVerFacturas && (
         <TabsContent value="facturas" className="space-y-4">
-          {mostrarWizard ? (
+          {mostrarWizard && esAdmin ? (
             <FacturaWizard
               catalogos={catalogos}
               proveedores={proveedores}
@@ -92,7 +94,7 @@ export function ProveedoresTabs({
               borradorInicial={borradorInicial}
               onListo={cerrarWizard}
             />
-          ) : (
+          ) : !esAdmin ? null : (
             <>
               <Button onClick={() => setMostrarWizard(true)} className="w-full h-12">
                 <Plus className="mr-2 h-4 w-4" /> Registrar factura de proveedor

@@ -1,7 +1,45 @@
 // Tipos de dominio del inventario. (Si conectas la CLI de Supabase puedes
 // generar tipos automáticos; estos cubren el uso de la app.)
 
-export type Rol = "ADMIN" | "ALMACEN";
+// ADMIN = Gerente general (todo, y administra usuarios). El resto se define en
+// permisos_rol (migración 0016).
+export type Rol =
+  | "ADMIN"
+  | "ALMACEN"
+  | "GERENTE_OPERATIVO"
+  | "FACTURACION"
+  | "LIDER_CAJA"
+  | "VENDEDOR"
+  | "LIDER_PATIO"
+  | "DELIVERY";
+
+export type ModuloPermiso = "inventario" | "facturas" | "caja" | "apertura_caja" | "finanzas" | "delivery" | "patio";
+export type NivelPermiso = "ver" | "editar";
+export type MapaPermisos = Partial<Record<ModuloPermiso, NivelPermiso>>;
+
+export interface EntregaPedido {
+  id: string;
+  estado: "pendiente_patio" | "listo" | "en_ruta" | "entregado" | "incidencia";
+  nota: string | null;
+  verificado_at: string | null;
+  en_ruta_at: string | null;
+  entregado_at: string | null;
+  created_at: string;
+  pedido: {
+    id: string;
+    numero_venta: number;
+    cliente_nombre: string | null;
+    cliente_apellido: string | null;
+    cliente_telefono: string | null;
+    direccion: string | null;
+    lat: number | null;
+    lng: number | null;
+    costo_delivery: number;
+    total_bs: number;
+    created_at: string;
+    pedido_items: { nombre: string; cantidad: number; unidad?: string | null }[];
+  } | null;
+}
 export type TipoMovimiento = "INGRESO" | "AJUSTE" | "VENTA" | "ALTA";
 
 export interface Producto {
