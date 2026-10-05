@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSesion } from "@/lib/auth";
 import type { Rol } from "@/lib/types";
+import { ROLES_ASIGNABLES } from "@/lib/permisos";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   const email = (body.email ?? "").toString().trim().toLowerCase();
   const password = (body.password ?? "").toString();
   const username = (body.username ?? "").toString().trim() || email.split("@")[0];
-  const rol: Rol = body.rol === "ADMIN" ? "ADMIN" : "ALMACEN";
+  const rol: Rol = ROLES_ASIGNABLES.includes(body.rol) ? body.rol : "VENDEDOR";
 
   if (!email || password.length < 6) {
     return NextResponse.json(
@@ -94,7 +95,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const update: Record<string, unknown> = {};
-  if (body.rol === "ADMIN" || body.rol === "ALMACEN") update.rol = body.rol;
+  if (ROLES_ASIGNABLES.includes(body.rol)) update.rol = body.rol;
   if (typeof body.username === "string") update.username = body.username.trim();
   if (Object.keys(update).length === 0)
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });

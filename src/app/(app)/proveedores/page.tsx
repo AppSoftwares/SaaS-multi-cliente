@@ -2,7 +2,14 @@ import { getSesion } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ProveedoresTabs } from "@/components/proveedores/proveedores-tabs";
 import { DEMO, demoProveedores, demoCatalogos, demoFacturas } from "@/lib/demo";
-import type { Catalogos, Factura, PagoProveedor, Proveedor } from "@/lib/types";
+import type { Catalogos, Factura, MapaPermisos, PagoProveedor, Proveedor } from "@/lib/types";
+import { puede } from "@/lib/permisos";
+
+async function permisosDelUsuario(): Promise<MapaPermisos> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("mis_permisos");
+  return ((data as { modulos?: MapaPermisos } | null)?.modulos ?? {}) as MapaPermisos;
+}
 
 export interface BorradorResumen {
   id: string;
@@ -16,7 +23,10 @@ export interface BorradorResumen {
 
 export default async function ProveedoresPage() {
   const sesion = await getSesion();
-  const esAdmin = sesion?.rol === "ADMIN";
+  const permisos = DEMO ? {} : await permisosDelUsuario();
+  // Quien puede editar facturas (ADMIN o rol de facturación) y quien solo las ve.
+  const esAdmin = sesion?.rol === "ADMIN" || puede(permisos, "facturas", "editar");
+  const puedeVerFacturas = esAdmin || puede(permisos, "facturas", "ver");
 
   let proveedores: Proveedor[];
   let catalogos: Catalogos = { categorias: [], marcas: [], unidades: [] };
@@ -35,14 +45,14 @@ export default async function ProveedoresPage() {
       esAdmin ? supabase.from("categorias").select("id, nombre, parent_id").order("nombre") : Promise.resolve({ data: [] }),
       esAdmin ? supabase.from("marcas").select("id, nombre").order("nombre") : Promise.resolve({ data: [] }),
       esAdmin ? supabase.from("unidades").select("id, nombre").order("nombre") : Promise.resolve({ data: [] }),
-      esAdmin
+      puedeVerFacturas
         ? supabase
             .from("facturas")
             .select("*, proveedores(nombre)")
             .neq("estado", "borrador")
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] }),
-      esAdmin
+      puedeVerFacturas
         ? supabase
             .from("facturas")
             .select("id, numero_factura, moneda, monto_total, updated_at, proveedores(nombre), factura_items(count)")
@@ -78,7 +88,7 @@ export default async function ProveedoresPage() {
       items_count: f.factura_items?.[0]?.count ?? 0,
     }));
 
-    if (esAdmin && facturas.length > 0) {
+    if (puedeVerFacturas && facturas.length > 0) {
       const { data: pagosData } = await supabase
         .from("pagos_proveedor")
         .select("*")
@@ -101,6 +111,7 @@ export default async function ProveedoresPage() {
       <ProveedoresTabs
         negocioId={sesion?.negocioId ?? ""}
         esAdmin={esAdmin}
+        puedeVerFacturas={puedeVerFacturas}
         proveedores={proveedores}
         facturas={facturas}
         pagos={pagos}

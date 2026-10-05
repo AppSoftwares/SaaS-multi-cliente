@@ -2,29 +2,41 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Package, ScanLine, FileSpreadsheet, ArrowLeftRight, Store, Megaphone } from "lucide-react";
+import { Home, Package, ScanLine, FileSpreadsheet, ArrowLeftRight, Store, Megaphone, Truck, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { puede } from "@/lib/permisos";
+import type { MapaPermisos } from "@/lib/types";
 
 interface ItemNav {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  soloAdmin?: boolean;
+  visible: (esAdmin: boolean, permisos: MapaPermisos) => boolean;
 }
 
 const ITEMS: ItemNav[] = [
-  { href: "/", label: "Inicio", icon: Home },
-  { href: "/productos", label: "Productos", icon: Package },
-  { href: "/capturar", label: "Capturar", icon: ScanLine },
-  { href: "/pos", label: "Caja", icon: Store },
-  { href: "/movimientos", label: "Historial", icon: ArrowLeftRight },
-  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet, soloAdmin: true },
-  { href: "/marketing", label: "Marketing", icon: Megaphone, soloAdmin: true },
+  { href: "/", label: "Inicio", icon: Home, visible: () => true },
+  { href: "/productos", label: "Productos", icon: Package, visible: (_, p) => puede(p, "inventario", "ver") },
+  { href: "/capturar", label: "Capturar", icon: ScanLine, visible: (_, p) => puede(p, "inventario", "editar") || puede(p, "facturas", "editar") },
+  { href: "/pos", label: "Caja", icon: Store, visible: (_, p) => puede(p, "caja", "ver") },
+  { href: "/patio", label: "Patio", icon: ClipboardCheck, visible: (_, p) => puede(p, "patio", "ver") },
+  { href: "/delivery", label: "Delivery", icon: Truck, visible: (_, p) => puede(p, "delivery", "ver") },
+  { href: "/movimientos", label: "Historial", icon: ArrowLeftRight, visible: (_, p) => puede(p, "inventario", "ver") || puede(p, "caja", "ver") },
+  { href: "/reportes", label: "Reportes", icon: FileSpreadsheet, visible: (esAdmin) => esAdmin },
+  { href: "/marketing", label: "Marketing", icon: Megaphone, visible: (esAdmin) => esAdmin },
 ];
 
-export function NavInferior({ esAdmin, alertas = 0 }: { esAdmin: boolean; alertas?: number }) {
+export function NavInferior({
+  esAdmin,
+  alertas = 0,
+  permisos = {},
+}: {
+  esAdmin: boolean;
+  alertas?: number;
+  permisos?: MapaPermisos;
+}) {
   const pathname = usePathname();
-  const items = ITEMS.filter((i) => !i.soloAdmin || esAdmin);
+  const items = ITEMS.filter((i) => i.visible(esAdmin, permisos));
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 glass border-t">
@@ -40,7 +52,7 @@ export function NavInferior({ esAdmin, alertas = 0 }: { esAdmin: boolean; alerta
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors press",
+                "flex flex-col items-center gap-1 py-2.5 text-[10px] transition-colors press",
                 activo && !destacado
                   ? "text-primary [text-shadow:0_0_12px_rgba(180,79,255,0.7)]"
                   : "text-muted-foreground"

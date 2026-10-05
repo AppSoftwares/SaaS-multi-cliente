@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { UserPlus, Trash2, Shield, User } from "lucide-react";
 import type { Rol, UsuarioNegocio } from "@/lib/types";
+import { ETIQUETA_ROL, ROLES_ASIGNABLES } from "@/lib/permisos";
 
 const DEMO_USUARIOS: UsuarioNegocio[] = [
   { id: "demo-user", username: "admin", email: "demo@ferreteria.com", rol: "ADMIN", created_at: new Date().toISOString() },
@@ -31,7 +32,7 @@ export function GestionUsuarios({ miId }: { miId: string }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rol, setRol] = useState<Rol>("ALMACEN");
+  const [rol, setRol] = useState<Rol>("VENDEDOR");
   const [creando, setCreando] = useState(false);
 
   async function cargar() {
@@ -80,11 +81,11 @@ export function GestionUsuarios({ miId }: { miId: string }) {
     cargar();
   }
 
-  async function cambiarRol(u: UsuarioNegocio) {
-    const nuevo: Rol = u.rol === "ADMIN" ? "ALMACEN" : "ADMIN";
+  async function cambiarRol(u: UsuarioNegocio, nuevo: Rol) {
+    if (nuevo === u.rol) return;
     if (DEMO) {
       setUsuarios((us) => us.map((x) => (x.id === u.id ? { ...x, rol: nuevo } : x)));
-      return toast.success(`(Demo) ${u.username} ahora es ${nuevo}`);
+      return toast.success(`(Demo) ${u.username} ahora es ${ETIQUETA_ROL[nuevo]}`);
     }
     const res = await fetch("/api/usuarios", {
       method: "PATCH",
@@ -93,7 +94,7 @@ export function GestionUsuarios({ miId }: { miId: string }) {
     });
     const json = await res.json();
     if (!res.ok) return toast.error(json.error ?? "Error");
-    toast.success(`Rol actualizado a ${nuevo}`);
+    toast.success(`Rol actualizado: ${ETIQUETA_ROL[nuevo]}`);
     cargar();
   }
 
@@ -136,8 +137,11 @@ export function GestionUsuarios({ miId }: { miId: string }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALMACEN">Almacén (operario)</SelectItem>
-                  <SelectItem value="ADMIN">Administrador</SelectItem>
+                  {ROLES_ASIGNABLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ETIQUETA_ROL[r]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -191,11 +195,18 @@ export function GestionUsuarios({ miId }: { miId: string }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => cambiarRol(u)} disabled={u.id === miId} className="disabled:opacity-40">
-                      <Badge variant={u.rol === "ADMIN" ? "default" : "secondary"} className="cursor-pointer">
-                        {u.rol}
-                      </Badge>
-                    </button>
+                    <Select value={u.rol} onValueChange={(v) => v && cambiarRol(u, v as Rol)} disabled={u.id === miId}>
+                      <SelectTrigger className="h-8 w-[170px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES_ASIGNABLES.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {ETIQUETA_ROL[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {u.id !== miId && (
                       <Button variant="ghost" size="icon" onClick={() => eliminar(u)} aria-label="Eliminar">
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -207,7 +218,8 @@ export function GestionUsuarios({ miId }: { miId: string }) {
             </ul>
           )}
           <p className="text-[11px] text-muted-foreground p-3 pt-2">
-            Toca el rol para alternar entre ADMIN y ALMACÉN. El operario (ALMACÉN) no ve costos ni márgenes.
+            Cada rol ve solo sus módulos. El gerente general (Administrador) ve y edita todo y administra usuarios.
+            El cambio de rol surte efecto en el siguiente ingreso.
           </p>
         </CardContent>
       </Card>
