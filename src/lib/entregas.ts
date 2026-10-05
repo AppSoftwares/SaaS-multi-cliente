@@ -6,7 +6,7 @@ export async function cargarEntregas(supabase: SupabaseClient, estados?: Entrega
   let q = supabase
     .from("entregas")
     .select(
-      "id, estado, nota, verificado_at, en_ruta_at, entregado_at, created_at, pedido:pedidos(id, numero_venta, cliente_nombre, cliente_apellido, cliente_telefono, direccion, costo_delivery, total_bs, pedido_items(nombre, cantidad))"
+      "id, estado, nota, verificado_at, en_ruta_at, entregado_at, created_at, pedido:pedidos(id, numero_venta, cliente_nombre, cliente_apellido, cliente_telefono, direccion, lat, lng, costo_delivery, total_bs, created_at, pedido_items(nombre, cantidad))"
     )
     .order("created_at", { ascending: false })
     .limit(150);

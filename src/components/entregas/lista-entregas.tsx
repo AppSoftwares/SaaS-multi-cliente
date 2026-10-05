@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, ClipboardCheck, PackageCheck, Truck, AlertTriangle } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, PackageCheck, Truck, AlertTriangle, MapPin, Navigation, Phone } from "lucide-react";
+import { linkGoogleMaps, linkTelefono, linkWaze } from "@/lib/mapas";
 import { createClient } from "@/lib/supabase/client";
 import { DEMO } from "@/lib/demo";
 import { formatBs } from "@/lib/format";
@@ -20,6 +21,55 @@ const ESTADO_TEXTO: Record<EntregaPedido["estado"], string> = {
   entregado: "Entregada",
   incidencia: "Con incidencia",
 };
+
+function BloqueNavegacion({ e }: { e: EntregaPedido }) {
+  const p = e.pedido;
+  if (!p) return null;
+  const maps = linkGoogleMaps(p.lat, p.lng, p.direccion);
+  const waze = linkWaze(p.lat, p.lng, p.direccion);
+  const tel = linkTelefono(p.cliente_telefono);
+  const conGps = p.lat != null && p.lng != null;
+  return (
+    <div className="rounded-lg border border-border/50 p-3 space-y-2 text-sm">
+      <p className="font-medium break-words">{p.direccion || "Sin dirección escrita"}</p>
+      {!conGps && (
+        <p className="text-[11px] text-amber-600">Sin ubicación GPS: la navegación busca la dirección escrita.</p>
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        {maps ? (
+          <a href={maps} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs font-medium hover:bg-muted/50">
+            <MapPin className="h-3.5 w-3.5" /> Maps
+          </a>
+        ) : (
+          <span />
+        )}
+        {waze ? (
+          <a href={waze} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs font-medium hover:bg-muted/50">
+            <Navigation className="h-3.5 w-3.5" /> Waze
+          </a>
+        ) : (
+          <span />
+        )}
+        {tel ? (
+          <a href={tel} className="inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs font-medium hover:bg-muted/50">
+            <Phone className="h-3.5 w-3.5" /> Llamar
+          </a>
+        ) : (
+          <span />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function resumenPedido(e: EntregaPedido) {
+  const items = e.pedido?.pedido_items ?? [];
+  const unidades = items.reduce((s, it) => s + Number(it.cantidad || 0), 0);
+  const hora = e.pedido?.created_at
+    ? new Intl.DateTimeFormat("es-VE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Caracas" }).format(new Date(e.pedido.created_at))
+    : "";
+  return `${hora ? hora + " · " : ""}${items.length} producto${items.length === 1 ? "" : "s"} (${unidades} und.)`;
+}
 
 function nombreCliente(e: EntregaPedido) {
   const p = e.pedido;
@@ -42,11 +92,15 @@ export function ListaEntregas({
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [nota, setNota] = useState<Record<string, string>>({});
 
-  const pendientes =
+  // Orden de trabajo: primero las más antiguas (salen antes).
+  const porHora = (a: EntregaPedido, b: EntregaPedido) =>
+    (a.pedido?.created_at ?? a.created_at).localeCompare(b.pedido?.created_at ?? b.created_at);
+  const pendientes = (
     modo === "patio"
       ? entregas.filter((e) => e.estado === "pendiente_patio" || e.estado === "incidencia")
-      : entregas.filter((e) => e.estado === "listo");
-  const enRuta = modo === "delivery" ? entregas.filter((e) => e.estado === "en_ruta") : [];
+      : entregas.filter((e) => e.estado === "listo")
+  ).sort(porHora);
+  const enRuta = modo === "delivery" ? entregas.filter((e) => e.estado === "en_ruta").sort(porHora) : [];
   const cerradas = entregas.filter((e) => e.estado === "entregado" || (modo === "patio" && e.estado === "listo"));
 
   async function accion(id: string, fn: () => PromiseLike<{ error: { message: string } | null }>, ok: string) {
@@ -103,7 +157,10 @@ export function ListaEntregas({
                 </ul>
               )}
 
+              <p className="text-xs text-muted-foreground">{resumenPedido(e)}</p>
               {e.nota && <p className="text-xs text-amber-600">Nota: {e.nota}</p>}
+
+              {modo === "delivery" && <BloqueNavegacion e={e} />}
 
               {puedeEditar && modo === "patio" && (
                 <div className="space-y-2">
@@ -168,9 +225,11 @@ export function ListaEntregas({
                     Venta #{e.pedido?.numero_venta ?? "—"} · {nombreCliente(e)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {e.pedido?.direccion || "Sin dirección"} · Delivery {formatBs(e.pedido?.costo_delivery ?? 0)}
+                    {resumenPedido(e)} · Delivery {formatBs(e.pedido?.costo_delivery ?? 0)}
+                    {e.en_ruta_at ? ` · salió ${new Intl.DateTimeFormat("es-VE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Caracas" }).format(new Date(e.en_ruta_at))}` : ""}
                   </p>
                 </div>
+                <BloqueNavegacion e={e} />
                 <Input
                   placeholder="Nota (opcional)"
                   value={nota[e.id] ?? ""}

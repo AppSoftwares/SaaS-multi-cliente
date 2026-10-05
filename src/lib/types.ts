@@ -32,8 +32,11 @@ export interface EntregaPedido {
     cliente_apellido: string | null;
     cliente_telefono: string | null;
     direccion: string | null;
+    lat: number | null;
+    lng: number | null;
     costo_delivery: number;
     total_bs: number;
+    created_at: string;
     pedido_items: { nombre: string; cantidad: number; unidad?: string | null }[];
   } | null;
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSesion } from "@/lib/auth";
 import type { KpisDashboard, MapaPermisos, Producto, TasasNegocio } from "@/lib/types";
@@ -25,6 +26,9 @@ interface FilaAlertaFactura {
 export default async function DashboardPage() {
   const sesion = await getSesion();
   const esAdmin = sesion?.rol === "ADMIN";
+  // Cada rol de operación entra directo a su pantalla de trabajo.
+  const aterrizaje: Partial<Record<string, string>> = { DELIVERY: "/delivery", LIDER_PATIO: "/patio", VENDEDOR: "/pos" };
+  if (!DEMO && sesion?.rol && aterrizaje[sesion.rol]) redirect(aterrizaje[sesion.rol]!);
   let permisos: MapaPermisos = {};
 
   let kpis: KpisDashboard | null;
