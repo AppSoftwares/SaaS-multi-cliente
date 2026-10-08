@@ -2,9 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Refresca la sesión de Supabase en cada request y protege rutas.
-// Rutas públicas: /login, /auth/*, /entrega/* (portal del repartidor) y
-// /tienda (landing + catálogo público, sin sesión).
-const PUBLIC_PATHS = ["/login", "/auth", "/entrega", "/tienda"];
+// Rutas públicas: /login, /auth/*, /entrega/* (portal del repartidor),
+// /tienda (landing + catálogo público) y /api/tienda/morgan (integración Morgan).
+const PUBLIC_PATHS = ["/login", "/auth", "/entrega", "/tienda", "/api/tienda/morgan"];
 
 export async function updateSession(request: NextRequest) {
   // Modo demo: no exige sesión, deja navegar toda la app sin base de datos.

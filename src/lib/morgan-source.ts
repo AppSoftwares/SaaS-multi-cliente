@@ -1,0 +1,1 @@
+export const MORGAN_SOURCE={nombre:"inventario-ferreteria",createdColumn:"created_at",table:"pedidos",members:"roles_usuario",rateColumn:"tasa_bcv",hasPaymentTable:true,hasBusinessPayments:false,travel:false} as const;
