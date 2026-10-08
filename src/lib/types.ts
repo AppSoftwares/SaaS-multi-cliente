@@ -17,6 +17,17 @@ export type ModuloPermiso = "inventario" | "facturas" | "caja" | "apertura_caja"
 export type NivelPermiso = "ver" | "editar";
 export type MapaPermisos = Partial<Record<ModuloPermiso, NivelPermiso>>;
 
+export interface ProductoTienda {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  categoria: string | null;
+  precio_usd: number;
+  imagen_url: string | null;
+  destacado: boolean;
+  orden: number;
+}
+
 export interface EntregaPedido {
   id: string;
   estado: "pendiente_patio" | "listo" | "en_ruta" | "entregado" | "incidencia";

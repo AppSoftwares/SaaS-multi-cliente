@@ -26,6 +26,49 @@ import type { SesionUsuario } from "@/lib/auth";
 
 export const DEMO = process.env.NEXT_PUBLIC_DEMO === "1";
 
+export const demoProductosTienda: import("@/lib/types").ProductoTienda[] = [
+  {
+    id: "dt1",
+    nombre: "Taladro percutor inalámbrico",
+    descripcion: "Taladro percutor con batería recargable, ideal para pared y madera.",
+    categoria: "Herramientas",
+    precio_usd: 45,
+    imagen_url: "https://commons.wikimedia.org/wiki/Special:FilePath/Cordless%20Drill%20-%20unbranded.jpg?width=640",
+    destacado: true,
+    orden: 1,
+  },
+  {
+    id: "dt2",
+    nombre: "Pintura blanca 1 galón",
+    descripcion: "Pintura de caucho para interiores, acabado mate.",
+    categoria: "Pintura",
+    precio_usd: 18,
+    imagen_url: "https://commons.wikimedia.org/wiki/Special:FilePath/Paint%20bucket%20and%20brush.jpg?width=640",
+    destacado: true,
+    orden: 2,
+  },
+  {
+    id: "dt3",
+    nombre: "Cinta métrica 5 m",
+    descripcion: "Cinta métrica retráctil, carcasa resistente a caídas.",
+    categoria: "Herramientas",
+    precio_usd: 6,
+    imagen_url: "https://commons.wikimedia.org/wiki/Special:FilePath/Plastic%20tape%20measure.jpg?width=640",
+    destacado: false,
+    orden: 3,
+  },
+  {
+    id: "dt4",
+    nombre: "Tomacorriente doble",
+    descripcion: "Tomacorriente doble polarizado, color blanco.",
+    categoria: "Electricidad",
+    precio_usd: 4,
+    imagen_url: "https://commons.wikimedia.org/wiki/Special:FilePath/Electrical-Outlet-8830c.jpg?width=640",
+    destacado: false,
+    orden: 4,
+  },
+];
+
 // Tasas de ejemplo para el modo demo
 export const DEMO_BCV = 639.7;
 export const DEMO_BINANCE = 737;
