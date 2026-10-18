@@ -312,7 +312,6 @@ export function FacturaWizard({
   // precio sigue siendo ese valor automático o 0: si el usuario lo escribió a
   // mano, no se pisa.
   function recalcularPrecioVenta(i: number, it: ItemEditable, nuevoBase: number, utilidad: number | "") {
-    if (it.status !== "NEW") return;
     if (utilidad !== "") {
       calcularPrecioVentaItem(i, nuevoBase, utilidad);
       return;
@@ -326,7 +325,7 @@ export function FacturaWizard({
   function aplicarGananciaATodos(pct: number, base: BaseGanancia) {
     setItems((arr) =>
       arr.map((it) =>
-        it.status === "NEW" && it.incluir
+        it.incluir
           ? { ...it, utilidad_pct: pct, precio_venta: precioConGanancia(costoBase(it.costoLista, it.precio_costo, base), pct) }
           : it
       )
@@ -337,7 +336,7 @@ export function FacturaWizard({
     setBaseGanancia(base);
     setItems((arr) =>
       arr.map((it) => {
-        if (it.status !== "NEW" || !it.incluir) return it;
+        if (!it.incluir) return it;
         const nuevoBase = costoBase(it.costoLista, it.precio_costo, base);
         if (it.utilidad_pct !== "") {
           return { ...it, precio_venta: precioConGanancia(nuevoBase, Number(it.utilidad_pct)) };
@@ -562,6 +561,7 @@ export function FacturaWizard({
           precio_costo: it.precio_costo,
           costo_lista: it.costoLista,
           descuento_pct: it.descuentoPct === "" ? null : it.descuentoPct,
+          precio_venta: it.precio_venta,
           aplicar_stock: aplicarStock,
         });
       } else {
@@ -1032,30 +1032,33 @@ export function FacturaWizard({
                       value={it.unidad_medida}
                       onChange={(v) => setItem(i, "unidad_medida", v)}
                     />
-                    <div className="space-y-1">
-                      <Label>% Utilidad ({baseGanancia === "lista" ? "sobre lista" : "sobre costo c/desc."})</Label>
-                      <CampoNumero
-                        permitirVacio
-                        placeholder="Ej: 30"
-                        value={it.utilidad_pct}
-                        onValor={(pct) => {
-                          setItem(i, "utilidad_pct", pct);
-                          const base = costoBase(it.costoLista, it.precio_costo);
-                          // Sin utilidad (campo vacío) el precio vuelve al costo base.
-                          if (pct === "") {
-                            if (base > 0) setItem(i, "precio_venta", base);
-                          } else {
-                            calcularPrecioVentaItem(i, base, pct);
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Precio venta (USD)</Label>
-                      <CampoNumero value={it.precio_venta} onValor={(v) => setItem(i, "precio_venta", Number(v) || 0)} />
-                    </div>
                   </>
                 )}
+                {/* % Utilidad y precio de venta también se editan en productos que
+                    ya existen: así se actualiza el precio ahí mismo, al cargar la
+                    factura, sin tener que salir a Productos. */}
+                <div className="space-y-1">
+                  <Label>% Utilidad ({baseGanancia === "lista" ? "sobre lista" : "sobre costo c/desc."})</Label>
+                  <CampoNumero
+                    permitirVacio
+                    placeholder="Ej: 30"
+                    value={it.utilidad_pct}
+                    onValor={(pct) => {
+                      setItem(i, "utilidad_pct", pct);
+                      const base = costoBase(it.costoLista, it.precio_costo);
+                      // Sin utilidad (campo vacío) el precio vuelve al costo base.
+                      if (pct === "") {
+                        if (base > 0) setItem(i, "precio_venta", base);
+                      } else {
+                        calcularPrecioVentaItem(i, base, pct);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Precio venta (USD)</Label>
+                  <CampoNumero value={it.precio_venta} onValor={(v) => setItem(i, "precio_venta", Number(v) || 0)} />
+                </div>
               </div>
             )}
           </div>

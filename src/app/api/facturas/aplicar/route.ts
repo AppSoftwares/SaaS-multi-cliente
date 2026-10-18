@@ -225,6 +225,16 @@ export async function POST(req: NextRequest) {
         huboAplicacion = true;
       }
     } else if (item.status === "EXISTING" && productoId) {
+      // Actualiza el precio de venta ahí mismo si lo editaron al cargar la
+      // factura (para no tener que salir a Productos a cambiarlo).
+      if (item.precio_venta != null) {
+        await supabase
+          .from("productos")
+          .update({ precio_venta: Number(item.precio_venta) })
+          .eq("id", productoId)
+          .eq("negocio_id", negocioId);
+      }
+
       const { data: costoActual } = await supabase
         .from("productos_costos")
         .select("precio_costo")
