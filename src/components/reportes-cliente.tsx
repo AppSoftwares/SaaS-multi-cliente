@@ -54,6 +54,42 @@ export function ReportesCliente() {
     descargarXlsx(filas, "Inventario", "inventario_valorizado");
   }
 
+  // Exportación completa, para que el cliente pueda revisar/corregir en Excel
+  // TODOS los campos de TODOS los SKU (no solo el resumen valorizado): el
+  // pedido explícito fue "que me dé toda la información que está cargada".
+  async function inventarioCompleto() {
+    setProc("completo");
+    const { data: prods } = await supabase.from("productos").select("*").order("nombre");
+    const { data: costos } = await supabase
+      .from("productos_costos")
+      .select("producto_id, precio_costo");
+    setProc(null);
+
+    const mapaCosto = new Map(
+      (costos ?? []).map((c) => [c.producto_id as string, Number(c.precio_costo)])
+    );
+    const filas = ((prods ?? []) as Producto[]).map((p) => ({
+      Nombre: p.nombre,
+      SKU: p.sku ?? "",
+      "Código de barras": p.codigo_barras ?? "",
+      Categoría: p.categoria ?? "",
+      Marca: p.marca ?? "",
+      Descripción: p.descripcion ?? "",
+      Unidad: p.unidad_medida,
+      Cantidad: p.cantidad,
+      "Stock mínimo": p.stock_minimo,
+      "Stock máximo": p.stock_maximo ?? "",
+      "Precio venta ($)": p.precio_venta,
+      "Precio costo ($)": mapaCosto.get(p.id) ?? "",
+      Proveedor: p.proveedor ?? "",
+      Ubicación: p.ubicacion ?? "",
+      Activo: p.activo ? "Sí" : "No",
+      "Creado": new Date(p.created_at).toLocaleDateString("es-US"),
+    }));
+    if (filas.length === 0) return toast.error("No hay productos");
+    descargarXlsx(filas, "Inventario completo", "inventario_completo");
+  }
+
   async function bajoStock() {
     setProc("bajo");
     const { data } = await supabase
@@ -148,7 +184,10 @@ export function ReportesCliente() {
           <CardTitle className="text-base">Inventario</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3">
-          <Button onClick={inventarioValorizado} disabled={proc === "inv"}>
+          <Button onClick={inventarioCompleto} disabled={proc === "completo"}>
+            <Download className="mr-2 h-4 w-4" /> Inventario completo (todos los campos)
+          </Button>
+          <Button variant="secondary" onClick={inventarioValorizado} disabled={proc === "inv"}>
             <Download className="mr-2 h-4 w-4" /> Inventario valorizado
           </Button>
           <Button variant="secondary" onClick={bajoStock} disabled={proc === "bajo"}>
