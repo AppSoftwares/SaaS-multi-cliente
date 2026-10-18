@@ -35,6 +35,7 @@ import { ModalDescuento } from "@/components/pos/modal-descuento";
 import type {
   ArqueoTurno,
   ClientePos,
+  EstadoCajaVendedor,
   ItemCarritoPos,
   MetodoPago,
   MonedaPago,
@@ -105,6 +106,8 @@ export function PosCliente({
   igtfTasa,
   turnoInicial,
   puedeAbrirCaja,
+  estadoCajasInicial,
+  miUserId,
 }: {
   metodosPago: MetodoPago[];
   negocioNombre: string;
@@ -114,12 +117,19 @@ export function PosCliente({
   igtfTasa: number;
   turnoInicial: TurnoCaja | null;
   puedeAbrirCaja: boolean;
+  estadoCajasInicial: EstadoCajaVendedor[];
+  miUserId: string;
 }) {
   const router = useRouter();
   const [turno, setTurno] = useState<TurnoCaja | null>(turnoInicial);
-  const [montoApertura, setMontoApertura] = useState("");
-  const [montoAperturaUsd, setMontoAperturaUsd] = useState("");
   const [abriendoTurno, setAbriendoTurno] = useState(false);
+
+  // Panel del líder: estado de la caja de cada vendedor (cada uno abre con su
+  // propio monto inicial) y cuál fila tiene el formulario de apertura abierto.
+  const [estadoCajas, setEstadoCajas] = useState<EstadoCajaVendedor[]>(estadoCajasInicial);
+  const [abriendoParaId, setAbriendoParaId] = useState<string | null>(null);
+  const [montoAperturaVendedor, setMontoAperturaVendedor] = useState("");
+  const [montoAperturaVendedorUsd, setMontoAperturaVendedorUsd] = useState("");
 
   const [dialogCajaAbierto, setDialogCajaAbierto] = useState(false);
   const [arqueo, setArqueo] = useState<ArqueoTurno | null>(null);
@@ -509,52 +519,75 @@ export function PosCliente({
     setResultado(null);
   }
 
-  async function abrirTurno() {
+  // Abre la caja del vendedor elegido (o la propia): cada uno con su propio
+  // monto inicial en Bs y en $. Si es la caja de quien está operando el
+  // panel, además la deja lista para vender de una vez.
+  async function abrirTurnoPara(usuarioId: string) {
     setAbriendoTurno(true);
-    const monto = Number(montoApertura) || 0;
-    const montoUsd = Number(montoAperturaUsd) || 0;
+    const monto = Number(montoAperturaVendedor) || 0;
+    const montoUsd = Number(montoAperturaVendedorUsd) || 0;
     if (DEMO) {
       await new Promise((r) => setTimeout(r, 300));
-      setTurno({
+      const nuevoTurno = {
         id: crypto.randomUUID(),
         negocio_id: "demo-negocio",
-        usuario_id: "demo-user",
+        usuario_id: usuarioId,
         monto_apertura_bs: monto,
         monto_apertura_usd: montoUsd,
         monto_cierre_bs: null,
         monto_cierre_usd: null,
         abierto_at: new Date().toISOString(),
         cerrado_at: null,
-        estado: "abierto",
-      });
+        estado: "abierto" as const,
+      };
+      setEstadoCajas((arr) =>
+        arr.map((v) =>
+          v.usuario_id === usuarioId
+            ? { ...v, turno_id: nuevoTurno.id, abierto_at: nuevoTurno.abierto_at, monto_apertura_bs: monto, monto_apertura_usd: montoUsd }
+            : v
+        )
+      );
+      if (usuarioId === miUserId) setTurno(nuevoTurno);
       setAbriendoTurno(false);
-      setMontoApertura("");
-      setMontoAperturaUsd("");
+      setAbriendoParaId(null);
+      setMontoAperturaVendedor("");
+      setMontoAperturaVendedorUsd("");
       return toast.success("(Demo) Caja abierta");
     }
     const supabase = createClient();
     const { data, error } = await supabase.rpc("abrir_turno", {
       p_monto_apertura: monto,
       p_monto_apertura_usd: montoUsd,
+      p_usuario_id: usuarioId,
     });
     setAbriendoTurno(false);
     if (error) return toast.error(error.message);
     const turnoId = (data as { turno_id: string }).turno_id;
+    const abiertoAt = new Date().toISOString();
+    setEstadoCajas((arr) =>
+      arr.map((v) =>
+        v.usuario_id === usuarioId
+          ? { ...v, turno_id: turnoId, abierto_at: abiertoAt, monto_apertura_bs: monto, monto_apertura_usd: montoUsd }
+          : v
+      )
+    );
+    setAbriendoParaId(null);
+    setMontoAperturaVendedor("");
+    setMontoAperturaVendedorUsd("");
+    toast.success("Caja abierta");
+    if (usuarioId !== miUserId) return;
     setTurno({
       id: turnoId,
       negocio_id: "",
-      usuario_id: "",
+      usuario_id: usuarioId,
       monto_apertura_bs: monto,
       monto_apertura_usd: montoUsd,
       monto_cierre_bs: null,
       monto_cierre_usd: null,
-      abierto_at: new Date().toISOString(),
+      abierto_at: abiertoAt,
       cerrado_at: null,
       estado: "abierto",
     });
-    setMontoApertura("");
-    setMontoAperturaUsd("");
-    toast.success("Caja abierta");
   }
 
   async function abrirDialogoCierre() {
@@ -709,37 +742,104 @@ export function PosCliente({
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Registra el monto inicial físico en bolívares y en divisa para abrir tu turno de caja.
+              Cada vendedor tiene su propia caja. Abre la de cada uno con su monto inicial en
+              bolívares y en divisa; al cerrar el día, cada uno cierra la suya.
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Apertura en Bs</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  inputMode="decimal"
-                  value={montoApertura}
-                  onChange={(e) => setMontoApertura(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Apertura en $</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  inputMode="decimal"
-                  value={montoAperturaUsd}
-                  onChange={(e) => setMontoAperturaUsd(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
+            {estadoCajas.length === 0 && (
+              <p className="text-sm text-muted-foreground italic">
+                No hay vendedores registrados todavía.
+              </p>
+            )}
+            <div className="space-y-2">
+              {estadoCajas.map((v) => (
+                <div key={v.usuario_id} className="rounded-xl border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">{v.username}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {v.rol === "LIDER_CAJA" ? "Líder de caja" : "Vendedor"}
+                      </p>
+                    </div>
+                    {v.turno_id ? (
+                      <div className="text-right text-xs text-emerald-600 dark:text-emerald-400">
+                        <p className="font-medium">Caja abierta</p>
+                        <p>
+                          Bs {formatBs(v.monto_apertura_bs ?? 0)} · $ {formatUSD(v.monto_apertura_usd ?? 0)}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Caja cerrada</span>
+                    )}
+                  </div>
+
+                  {!v.turno_id && abriendoParaId === v.usuario_id && (
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label>Apertura en Bs</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={montoAperturaVendedor}
+                            onChange={(e) => setMontoAperturaVendedor(e.target.value)}
+                            placeholder="0.00"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Apertura en $</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={montoAperturaVendedorUsd}
+                            onChange={(e) => setMontoAperturaVendedorUsd(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          className="flex-1"
+                          onClick={() => {
+                            setAbriendoParaId(null);
+                            setMontoAperturaVendedor("");
+                            setMontoAperturaVendedorUsd("");
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          onClick={() => abrirTurnoPara(v.usuario_id)}
+                          disabled={abriendoTurno}
+                        >
+                          {abriendoTurno ? "Abriendo…" : "Confirmar"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!v.turno_id && abriendoParaId !== v.usuario_id && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setAbriendoParaId(v.usuario_id);
+                        setMontoAperturaVendedor("");
+                        setMontoAperturaVendedorUsd("");
+                      }}
+                    >
+                      Abrir caja
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
-            <Button onClick={abrirTurno} disabled={abriendoTurno} className="w-full h-11">
-              {abriendoTurno ? "Abriendo…" : "Abrir caja"}
-            </Button>
           </CardContent>
         </Card>
       </div>

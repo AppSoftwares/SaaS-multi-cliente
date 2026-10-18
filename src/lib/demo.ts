@@ -14,6 +14,7 @@ import type {
   ClientePos,
   Factura,
   TurnoCaja,
+  EstadoCajaVendedor,
   ArqueoTurno,
   FinanzasPeriodo,
   SaldoCreditoCliente,
@@ -217,6 +218,38 @@ export function demoCierreCajaPorFecha(fecha: string): CierreCaja {
 
 // En demo no hay turno abierto al cargar: se muestra el flujo de "Abrir caja".
 export const demoTurnoAbierto: TurnoCaja | null = null;
+
+// Estado de ejemplo de las cajas del equipo, para previsualizar el panel del
+// líder de caja (abrir la caja de cada vendedor con su propio monto).
+export const demoEstadoCajas: EstadoCajaVendedor[] = [
+  {
+    usuario_id: "demo-user",
+    username: "Líder de caja",
+    rol: "LIDER_CAJA",
+    turno_id: null,
+    abierto_at: null,
+    monto_apertura_bs: null,
+    monto_apertura_usd: null,
+  },
+  {
+    usuario_id: "demo-vendedor-1",
+    username: "Vendedor 1",
+    rol: "VENDEDOR",
+    turno_id: "demo-turno-1",
+    abierto_at: new Date().toISOString(),
+    monto_apertura_bs: 500,
+    monto_apertura_usd: 20,
+  },
+  {
+    usuario_id: "demo-vendedor-2",
+    username: "Vendedor 2",
+    rol: "VENDEDOR",
+    turno_id: null,
+    abierto_at: null,
+    monto_apertura_bs: null,
+    monto_apertura_usd: null,
+  },
+];
 
 // Ítems de ejemplo para el portal público del repartidor en modo demo.
 export const demoEntregaItems = [

@@ -265,6 +265,18 @@ export interface TurnoCaja {
   estado: "abierto" | "cerrado";
 }
 
+// Caja de un vendedor/líder desde el punto de vista de quien abre cajas: su
+// estado actual (abierta o no) para decidir si mostrar el botón de apertura.
+export interface EstadoCajaVendedor {
+  usuario_id: string;
+  username: string;
+  rol: string;
+  turno_id: string | null;
+  abierto_at: string | null;
+  monto_apertura_bs: number | null;
+  monto_apertura_usd: number | null;
+}
+
 export interface ArqueoPorMetodo {
   metodo: string;
   moneda: MonedaPago;
