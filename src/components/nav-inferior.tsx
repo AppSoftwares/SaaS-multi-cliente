@@ -39,7 +39,7 @@ export function NavInferior({
   const items = ITEMS.filter((i) => i.visible(esAdmin, permisos));
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 glass border-t">
+    <nav className="fixed bottom-0 inset-x-0 z-40 glass border-t pb-[env(safe-area-inset-bottom)]">
       <div
         className="max-w-2xl mx-auto grid"
         style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }}

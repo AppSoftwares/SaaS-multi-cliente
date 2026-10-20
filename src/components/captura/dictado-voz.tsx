@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff } from "lucide-react";
+import { esNativo, iniciarDictadoNativo } from "@/lib/nativo";
 
 // Tipos mínimos para la Web Speech API (no incluidos en lib.dom por defecto)
 interface SpeechRecognitionResultLike {
@@ -36,16 +37,20 @@ export function DictadoVoz({ onTexto }: { onTexto: (t: string) => void }) {
   const [escuchando, setEscuchando] = useState(false);
   const [soportado, setSoportado] = useState(true);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const stopNativoRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    if (esNativo()) {
+      setSoportado(true);
+      return;
+    }
+
     const rec = crearReconocimiento();
     if (!rec) {
-      // Sincroniza con la API de plataforma (no hay reconocimiento de voz disponible).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSoportado(false);
       return;
     }
-    rec.lang = "es-ES";
+    rec.lang = "es-VE";
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e) => {
@@ -62,7 +67,30 @@ export function DictadoVoz({ onTexto }: { onTexto: (t: string) => void }) {
 
   if (!soportado) return null;
 
-  function toggle() {
+  async function toggle() {
+    if (esNativo()) {
+      if (escuchando) {
+        if (stopNativoRef.current) {
+          stopNativoRef.current();
+          stopNativoRef.current = null;
+        }
+        setEscuchando(false);
+      } else {
+        setEscuchando(true);
+        const stopFn = await iniciarDictadoNativo(
+          (texto) => {
+            onTexto(texto);
+          },
+          (err) => {
+            console.error("Error dictado nativo:", err);
+            setEscuchando(false);
+          }
+        );
+        stopNativoRef.current = stopFn;
+      }
+      return;
+    }
+
     const rec = recRef.current;
     if (!rec) return;
     if (escuchando) {

@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+.idea/
+repomix-output.xml
 
 # debug
 npm-debug.log*
@@ -53,3 +55,15 @@ next-env.d.ts
 /nuevos cambios/
 /otras correcciones/
 /pantalla diseno landing y tienda/
+
+# capacitor & native builds
+Pods/
+local.properties
+*.keystore
+*.jks
+DerivedData/
+android/app/build/
+android/build/
+android/.gradle/
+ios/App/Pods/
+ios/App/DerivedData/

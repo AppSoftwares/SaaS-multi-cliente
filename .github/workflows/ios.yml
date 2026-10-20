@@ -1,0 +1,72 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['ios-v*']
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Setup Signing (Keychain & Provisioning Profile)
+        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        env:
+          P12: ${{ secrets.IOS_P12_BASE64 }}
+          P12_PASS: ${{ secrets.IOS_P12_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROFILE_BASE64 }}
+          KC_PASS: ${{ secrets.KEYCHAIN_PASSWORD || 'buildpassword123' }}
+        run: |
+          echo "$P12" | base64 --decode > cert.p12
+          echo "$PROFILE" | base64 --decode > app.mobileprovision
+          security create-keychain -p "$KC_PASS" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KC_PASS" build.keychain
+          security import cert.p12 -k build.keychain -P "$P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" build.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(grep -a -A1 UUID app.mobileprovision | grep -io "[0-9a-f-]\{36\}" | head -1)
+          cp app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+
+      - name: Archive iOS App
+        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Release -archivePath $PWD/build/App.xcarchive \
+            archive CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=${{ secrets.IOS_TEAM_ID }}
+
+      - name: Export IPA
+        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        run: |
+          xcodebuild -exportArchive -archivePath build/App.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
+
+      - name: Upload to TestFlight (App Store Connect)
+        if: "${{ secrets.ASC_KEY_P8_BASE64 != '' }}"
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          xcrun altool --upload-app -f build/ipa/App.ipa -t ios \
+            --apiKey ${{ secrets.ASC_KEY_ID }} --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        with:
+          name: app-ipa
+          path: build/ipa/*.ipa

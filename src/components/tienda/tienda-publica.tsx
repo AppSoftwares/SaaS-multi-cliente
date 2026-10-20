@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Minus, Package, Plus, ShoppingCart, X, MessageCircle } from "lucide-react";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { abrirUrlExterna } from "@/lib/nativo";
 import { WA_PEDIDOS } from "@/lib/tienda-config";
 import type { ProductoTienda } from "@/lib/types";
 
@@ -118,7 +119,7 @@ export function TiendaPublica({ productos }: { productos: ProductoTienda[] }) {
   }
 
   function abrirWhatsApp() {
-    window.open(linkWhatsApp(mensajeFinal, WA_PEDIDOS || undefined), "_blank", "noopener,noreferrer");
+    abrirUrlExterna(linkWhatsApp(mensajeFinal, WA_PEDIDOS || undefined));
   }
 
   function nuevoPedido() {

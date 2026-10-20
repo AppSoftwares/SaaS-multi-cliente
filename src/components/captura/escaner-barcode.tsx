@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
+import { esNativo, escanearCodigoBarraNativo } from "@/lib/nativo";
 
 // Abre la cámara y escanea un código de barras. Llama onDetectado con el texto.
 export function EscanerBarcode({
@@ -16,31 +17,49 @@ export function EscanerBarcode({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    // Si estamos en nativo, lanzar el plugin MLKit de Capacitor
+    if (esNativo()) {
+      escanearCodigoBarraNativo().then((codigo) => {
+        if (codigo) {
+          onDetectado(codigo);
+        }
+        onCerrar();
+      });
+      return;
+    }
+
+    // Web normal: ZXing
     const reader = new BrowserMultiFormatReader();
     let controls: { stop: () => void } | null = null;
     let cancelado = false;
 
-    reader
-      .decodeFromVideoDevice(undefined, videoRef.current!, (result) => {
-        if (result && !cancelado) {
-          cancelado = true;
-          onDetectado(result.getText());
-          controls?.stop();
-        }
-      })
-      .then((c) => {
-        controls = c;
-        if (cancelado) c.stop();
-      })
-      .catch(() => {
-        /* permiso denegado o sin cámara */
-      });
+    if (videoRef.current) {
+      reader
+        .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+          if (result && !cancelado) {
+            cancelado = true;
+            onDetectado(result.getText());
+            controls?.stop();
+          }
+        })
+        .then((c) => {
+          controls = c;
+          if (cancelado) c.stop();
+        })
+        .catch(() => {
+          /* permiso denegado o sin cámara */
+        });
+    }
 
     return () => {
       cancelado = true;
       controls?.stop();
     };
-  }, [onDetectado]);
+  }, [onDetectado, onCerrar]);
+
+  if (esNativo()) {
+    return null; // El escáner nativo abre su propio overlay
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">

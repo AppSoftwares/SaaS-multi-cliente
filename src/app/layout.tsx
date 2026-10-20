@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { InicializadorNativo } from "@/components/inicializador-nativo";
+import { AvisoRed } from "@/components/aviso-red";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +29,7 @@ export const viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -40,8 +43,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <InicializadorNativo />
+          <AvisoRed />
           {children}
           <Toaster richColors position="top-center" />
         </ThemeProvider>

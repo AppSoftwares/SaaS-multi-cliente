@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ferretería Rose</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .logo {
+      width: 120px;
+      height: 120px;
+      border-radius: 24px;
+      object-fit: cover;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      border-top-color: #3b82f6;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .status {
+      font-size: 0.95rem;
+      color: #94a3b8;
+    }
+    .retry-btn {
+      display: none;
+      margin-top: 15px;
+      padding: 10px 20px;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <img src="logo.jpeg" alt="Ferretería Rose" class="logo" onerror="this.style.display='none'">
+    <h1 class="title">Ferretería Rose</h1>
+    <div class="spinner" id="spinner"></div>
+    <p class="status" id="status-text">Conectando...</p>
+    <button class="retry-btn" id="retry-btn" onclick="window.location.reload()">Reintentar</button>
+  </div>
+  <script>
+    // Si la conexión tarda más de 10s o falla, mostrar botón de reintentar
+    setTimeout(() => {
+      const statusText = document.getElementById('status-text');
+      const retryBtn = document.getElementById('retry-btn');
+      if (statusText && retryBtn) {
+        statusText.innerText = 'No se pudo conectar al servidor. Verifique su conexión.';
+        retryBtn.style.display = 'inline-block';
+      }
+    }, 10000);
+  </script>
+</body>
+</html>

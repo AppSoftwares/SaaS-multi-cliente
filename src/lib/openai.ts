@@ -3,7 +3,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
 // Cliente OpenAI (solo servidor).
-export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "dummy-key-for-build" });
 
 // Esquema estricto que la IA debe devolver. Con .nullable() en los campos que
 // pueden no deducirse, para cumplir Structured Outputs (todos requeridos).
