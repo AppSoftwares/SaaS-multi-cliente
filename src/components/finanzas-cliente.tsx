@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { TrendingUp, TrendingDown, FileWarning, Search, Wallet, BarChart3, Package, Truck, DollarSign, Scale } from "lucide-react";
+import { TrendingUp, TrendingDown, FileWarning, Search, Wallet, BarChart3, Package, Truck, DollarSign, Scale, Users } from "lucide-react";
 import { Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FinanzasPeriodo } from "@/lib/types";
 
@@ -224,6 +224,39 @@ export function FinanzasCliente() {
                       formatter={(v) => [formatBs(Number(v)), "Ventas"]}
                     />
                     <Bar dataKey="total_bs" fill="var(--brand-cyan)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {datos.ventas_por_vendedor.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4 text-brand-cyan" /> Ventas por vendedor
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={datos.ventas_por_vendedor} layout="vertical" margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border/50" />
+                    <XAxis type="number" fontSize={11} tickLine={false} />
+                    <YAxis
+                      dataKey="vendedor"
+                      type="category"
+                      width={90}
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(v: string) => (v.length > 14 ? `${v.slice(0, 14)}…` : v)}
+                    />
+                    <Tooltip
+                      formatter={(v, name, item) => [
+                        `${formatBs(Number(v))} (${item.payload.ventas} ${item.payload.ventas === 1 ? "venta" : "ventas"})`,
+                        "Total",
+                      ]}
+                    />
+                    <Bar dataKey="total_bs" fill="var(--brand-cyan)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

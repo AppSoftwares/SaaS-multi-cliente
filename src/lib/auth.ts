@@ -4,6 +4,7 @@ import type { Rol } from "@/lib/types";
 export interface SesionUsuario {
   userId: string;
   email: string | null;
+  username: string | null;
   negocioId: string | null;
   rol: Rol | null;
 }
@@ -22,13 +23,14 @@ export async function getSesion(): Promise<SesionUsuario | null> {
 
   const { data: rolRow } = await supabase
     .from("roles_usuario")
-    .select("rol, negocio_id")
+    .select("rol, negocio_id, username")
     .eq("id", user.id)
     .maybeSingle();
 
   return {
     userId: user.id,
     email: user.email ?? null,
+    username: rolRow?.username ?? null,
     negocioId: rolRow?.negocio_id ?? null,
     rol: (rolRow?.rol as Rol) ?? null,
   };

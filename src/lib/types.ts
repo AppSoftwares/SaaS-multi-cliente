@@ -265,6 +265,21 @@ export interface TurnoCaja {
   estado: "abierto" | "cerrado";
 }
 
+// Un cierre (o el turno en curso) en el historial de un vendedor: lo que el
+// líder revisa para validar el reporte en papel que le entrega cada uno.
+export interface HistorialTurno {
+  turno_id: string;
+  abierto_at: string;
+  cerrado_at: string | null;
+  estado: "abierto" | "cerrado";
+  monto_apertura_bs: number;
+  monto_apertura_usd: number;
+  monto_cierre_bs: number | null;
+  monto_cierre_usd: number | null;
+  total_ventas_bs: number;
+  ventas: number;
+}
+
 // Caja de un vendedor/líder desde el punto de vista de quien abre cajas: su
 // estado actual (abierta o no) para decidir si mostrar el botón de apertura.
 export interface EstadoCajaVendedor {
@@ -484,6 +499,12 @@ export interface PagoPorProveedor {
   monto_bs: number;
 }
 
+export interface VentaPorVendedor {
+  vendedor: string;
+  total_bs: number;
+  ventas: number;
+}
+
 export interface VentaPorMetodo {
   metodo: string;
   moneda: "BS" | "USD";
@@ -507,6 +528,7 @@ export interface FinanzasPeriodo {
   ventas_por_dia: VentaPorDia[];
   top_productos: TopProducto[];
   pagos_por_proveedor: PagoPorProveedor[];
+  ventas_por_vendedor: VentaPorVendedor[];
 }
 
 // ---------------------------------------------------------------------------

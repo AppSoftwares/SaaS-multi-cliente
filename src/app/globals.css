@@ -321,4 +321,23 @@
     background: #fff;
     color: #000;
   }
+  /* El ticket de cierre de caja vive dentro de un Dialog (shadcn/Base UI),
+     cuyo `transform` de centrado crea un nuevo contenedor de posicionamiento:
+     el `position: fixed; inset: 0` de arriba quedaba atrapado dentro de esa
+     caja chica en vez de ocupar la hoja completa, y el ticket salía cortado
+     o en miniatura. Se anula el overlay y el transform/tamaño del diálogo
+     solo en impresión (en pantalla sigue igual). */
+  [data-slot="dialog-overlay"] {
+    display: none;
+  }
+  [data-slot="dialog-content"] {
+    position: static;
+    transform: none;
+    max-width: none;
+    width: auto;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    background: transparent;
+  }
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { DEMO, demoProductos, demoClientesPos, demoArqueo, metodosConReferencia } from "@/lib/demo";
+import { DEMO, demoProductos, demoClientesPos, demoArqueo, demoHistorialTurnos, metodosConReferencia } from "@/lib/demo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ import type {
   ArqueoTurno,
   ClientePos,
   EstadoCajaVendedor,
+  HistorialTurno,
   ItemCarritoPos,
   MetodoPago,
   MonedaPago,
@@ -108,6 +109,7 @@ export function PosCliente({
   puedeAbrirCaja,
   estadoCajasInicial,
   miUserId,
+  miUsername,
 }: {
   metodosPago: MetodoPago[];
   negocioNombre: string;
@@ -119,6 +121,7 @@ export function PosCliente({
   puedeAbrirCaja: boolean;
   estadoCajasInicial: EstadoCajaVendedor[];
   miUserId: string;
+  miUsername: string;
 }) {
   const router = useRouter();
   const [turno, setTurno] = useState<TurnoCaja | null>(turnoInicial);
@@ -130,6 +133,16 @@ export function PosCliente({
   const [abriendoParaId, setAbriendoParaId] = useState<string | null>(null);
   const [montoAperturaVendedor, setMontoAperturaVendedor] = useState("");
   const [montoAperturaVendedorUsd, setMontoAperturaVendedorUsd] = useState("");
+
+  // Historial de cierres por vendedor (para que el líder valide el ticket que
+  // le entregan contra lo que el sistema registró). Se carga bajo demanda, al
+  // abrir el historial de cada fila, y se cachea en memoria.
+  const [historialAbiertoId, setHistorialAbiertoId] = useState<string | null>(null);
+  const [historial, setHistorial] = useState<Record<string, HistorialTurno[]>>({});
+  const [cargandoHistorialId, setCargandoHistorialId] = useState<string | null>(null);
+  // Quién abrió el resumen que se ve en el diálogo de abajo (turno de un
+  // vendedor viejo, ya cerrado), para distinguirlo del cierre en curso.
+  const [turnoEnRevision, setTurnoEnRevision] = useState<(HistorialTurno & { username: string }) | null>(null);
 
   const [dialogCajaAbierto, setDialogCajaAbierto] = useState(false);
   const [arqueo, setArqueo] = useState<ArqueoTurno | null>(null);
@@ -640,8 +653,65 @@ export function PosCliente({
   function cerrarDialogoCierre() {
     setDialogCajaAbierto(false);
     setArqueo(null);
+    setTurnoEnRevision(null);
     setMontoCierre("");
     setMontoCierreUsd("");
+  }
+
+  // Despliega/oculta el historial de cierres de un vendedor (para que el
+  // líder valide el ticket en papel que le entregan). Se carga una sola vez
+  // y queda en caché mientras dure la pantalla.
+  async function verHistorial(usuarioId: string) {
+    if (historialAbiertoId === usuarioId) {
+      setHistorialAbiertoId(null);
+      return;
+    }
+    setHistorialAbiertoId(usuarioId);
+    if (historial[usuarioId]) return;
+    setCargandoHistorialId(usuarioId);
+    if (DEMO) {
+      await new Promise((r) => setTimeout(r, 200));
+      setHistorial((h) => ({ ...h, [usuarioId]: demoHistorialTurnos[usuarioId] ?? [] }));
+      setCargandoHistorialId(null);
+      return;
+    }
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("historial_turnos", { p_usuario_id: usuarioId });
+    setCargandoHistorialId(null);
+    if (error) return toast.error(error.message);
+    setHistorial((h) => ({ ...h, [usuarioId]: (data ?? []) as HistorialTurno[] }));
+  }
+
+  // Abre el mismo diálogo de arqueo, pero para un cierre pasado del
+  // historial (no el turno propio en curso): solo lectura.
+  async function verResumenTurno(username: string, hist: HistorialTurno) {
+    setTurnoEnRevision({ ...hist, username });
+    setDialogCajaAbierto(true);
+    setCargandoArqueo(true);
+    if (DEMO) {
+      await new Promise((r) => setTimeout(r, 200));
+      setArqueo(
+        demoArqueo({
+          id: hist.turno_id,
+          negocio_id: "demo-negocio",
+          usuario_id: "",
+          monto_apertura_bs: hist.monto_apertura_bs,
+          monto_apertura_usd: hist.monto_apertura_usd,
+          monto_cierre_bs: hist.monto_cierre_bs,
+          monto_cierre_usd: hist.monto_cierre_usd,
+          abierto_at: hist.abierto_at,
+          cerrado_at: hist.cerrado_at,
+          estado: hist.estado,
+        })
+      );
+      setCargandoArqueo(false);
+      return;
+    }
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("arqueo_turno", { p_turno_id: hist.turno_id });
+    setCargandoArqueo(false);
+    if (error) return toast.error(error.message);
+    setArqueo(data as ArqueoTurno);
   }
 
   // --- Confirmación + ticket (tras cobrar) ---
@@ -753,8 +823,8 @@ export function PosCliente({
             <div className="space-y-2">
               {estadoCajas.map((v) => (
                 <div key={v.usuario_id} className="rounded-xl border p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium">{v.username}</p>
                       <p className="text-xs text-muted-foreground">
                         {v.rol === "LIDER_CAJA" ? "Líder de caja" : "Vendedor"}
@@ -763,8 +833,8 @@ export function PosCliente({
                     {v.turno_id ? (
                       <div className="text-right text-xs text-emerald-600 dark:text-emerald-400">
                         <p className="font-medium">Caja abierta</p>
-                        <p>
-                          Bs {formatBs(v.monto_apertura_bs ?? 0)} · $ {formatUSD(v.monto_apertura_usd ?? 0)}
+                        <p className="whitespace-nowrap">
+                          {formatBs(v.monto_apertura_bs ?? 0)} · {formatUSD(v.monto_apertura_usd ?? 0)}
                         </p>
                       </div>
                     ) : (
@@ -836,6 +906,44 @@ export function PosCliente({
                     >
                       Abrir caja
                     </Button>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground"
+                    onClick={() => verHistorial(v.usuario_id)}
+                  >
+                    {historialAbiertoId === v.usuario_id ? "Ocultar historial" : "Ver historial"}
+                  </Button>
+
+                  {historialAbiertoId === v.usuario_id && (
+                    <div className="space-y-1.5 border-t pt-2">
+                      {cargandoHistorialId === v.usuario_id ? (
+                        <p className="text-xs text-muted-foreground">Cargando…</p>
+                      ) : (historial[v.usuario_id] ?? []).length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic">Sin cierres registrados todavía.</p>
+                      ) : (
+                        (historial[v.usuario_id] ?? []).map((h) => (
+                          <button
+                            key={h.turno_id}
+                            type="button"
+                            onClick={() => verResumenTurno(v.username, h)}
+                            className="flex w-full items-center justify-between rounded-lg border px-2.5 py-1.5 text-left text-xs hover:bg-muted/50"
+                          >
+                            <span>
+                              {formatFecha(h.abierto_at)}
+                              {h.estado === "abierto" && (
+                                <span className="ml-1 text-emerald-600 dark:text-emerald-400">(en curso)</span>
+                              )}
+                            </span>
+                            <span className="font-medium">
+                              {formatBs(h.total_ventas_bs)} · {h.ventas} {h.ventas === 1 ? "venta" : "ventas"}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -1331,12 +1439,24 @@ export function PosCliente({
       <Dialog open={dialogCajaAbierto} onOpenChange={(o) => !o && cerrarDialogoCierre()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{arqueo?.estado === "cerrado" ? "Caja cerrada" : "Cerrar caja"}</DialogTitle>
+            <DialogTitle>
+              {turnoEnRevision ? "Resumen de caja" : arqueo?.estado === "cerrado" ? "Caja cerrada" : "Cerrar caja"}
+            </DialogTitle>
           </DialogHeader>
           {cargandoArqueo || !arqueo ? (
             <p className="text-sm text-muted-foreground py-4">Calculando arqueo…</p>
           ) : (
             <div id="ticket-imprimible" className="space-y-2 text-sm">
+              <div className="text-center space-y-0.5 pb-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.jpeg" alt="" className="mx-auto h-8 w-auto object-contain" />
+                <p className="font-bold">{negocioNombre}</p>
+                <p className="text-xs">Cierre de caja — {turnoEnRevision?.username ?? miUsername}</p>
+                <p className="text-xs text-muted-foreground">
+                  Apertura: {formatFecha(arqueo.abierto_at)}
+                  {arqueo.cerrado_at && <> · Cierre: {formatFecha(arqueo.cerrado_at)}</>}
+                </p>
+              </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Apertura</span>
                 <span className="font-medium">
@@ -1409,6 +1529,10 @@ export function PosCliente({
                     </span>
                   </div>
                 </>
+              ) : turnoEnRevision ? (
+                <p className="text-xs italic text-muted-foreground pt-1">
+                  Esta caja sigue abierta; vuelve a revisarla cuando {turnoEnRevision.username} la cierre.
+                </p>
               ) : (
                 <div className="grid grid-cols-2 gap-3 pt-2 print:hidden">
                   <div className="space-y-1">
@@ -1447,6 +1571,8 @@ export function PosCliente({
                 </Button>
                 <Button onClick={cerrarDialogoCierre}>Aceptar</Button>
               </>
+            ) : turnoEnRevision ? (
+              <Button onClick={cerrarDialogoCierre}>Cerrar</Button>
             ) : (
               <>
                 <Button variant="outline" onClick={cerrarDialogoCierre}>

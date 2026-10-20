@@ -80,6 +80,7 @@ export default async function PosPage() {
       puedeAbrirCaja={puedeAbrirCaja}
       estadoCajasInicial={estadoCajas}
       miUserId={DEMO ? "demo-user" : sesion?.userId ?? ""}
+      miUsername={sesion?.username ?? ""}
     />
   );
 }

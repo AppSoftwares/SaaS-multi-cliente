@@ -15,6 +15,7 @@ import type {
   Factura,
   TurnoCaja,
   EstadoCajaVendedor,
+  HistorialTurno,
   ArqueoTurno,
   FinanzasPeriodo,
   SaldoCreditoCliente,
@@ -81,6 +82,7 @@ export const demoNegocioNombre = "Mi Ferretería";
 export const demoSesion: SesionUsuario = {
   userId: "demo-user",
   email: "demo@ferreteria.com",
+  username: "Líder de caja",
   negocioId: "demo-negocio",
   rol: "ADMIN",
 };
@@ -251,6 +253,51 @@ export const demoEstadoCajas: EstadoCajaVendedor[] = [
   },
 ];
 
+// Historial de cierres de ejemplo (para previsualizar "Ver historial" en el
+// panel del líder), indexado por usuario_id.
+export const demoHistorialTurnos: Record<string, HistorialTurno[]> = {
+  "demo-vendedor-1": [
+    {
+      turno_id: "demo-turno-1",
+      abierto_at: new Date().toISOString(),
+      cerrado_at: null,
+      estado: "abierto",
+      monto_apertura_bs: 500,
+      monto_apertura_usd: 20,
+      monto_cierre_bs: null,
+      monto_cierre_usd: null,
+      total_ventas_bs: 1850,
+      ventas: 6,
+    },
+    {
+      turno_id: "demo-turno-1-ayer",
+      abierto_at: new Date(Date.now() - 86400e3).toISOString(),
+      cerrado_at: new Date(Date.now() - 86400e3 + 8 * 3600e3).toISOString(),
+      estado: "cerrado",
+      monto_apertura_bs: 500,
+      monto_apertura_usd: 20,
+      monto_cierre_bs: 2340,
+      monto_cierre_usd: 20,
+      total_ventas_bs: 1820,
+      ventas: 7,
+    },
+  ],
+  "demo-vendedor-2": [
+    {
+      turno_id: "demo-turno-2-ayer",
+      abierto_at: new Date(Date.now() - 86400e3).toISOString(),
+      cerrado_at: new Date(Date.now() - 86400e3 + 7 * 3600e3).toISOString(),
+      estado: "cerrado",
+      monto_apertura_bs: 300,
+      monto_apertura_usd: 10,
+      monto_cierre_bs: 1650,
+      monto_cierre_usd: 10,
+      total_ventas_bs: 1340,
+      ventas: 5,
+    },
+  ],
+};
+
 // Ítems de ejemplo para el portal público del repartidor en modo demo.
 export const demoEntregaItems = [
   { id: "ei1", nombre: "Taladro percutor 750W", cantidad: 8, unidad_medida: "unidad" },
@@ -409,6 +456,11 @@ export const demoFinanzas: FinanzasPeriodo = {
     { proveedor: "Bosch", monto_usd: 250, monto_bs_directo: null, monto_bs: 250 * DEMO_BCV },
     { proveedor: "Truper", monto_usd: 160.2, monto_bs_directo: null, monto_bs: 160.2 * DEMO_BCV },
     { proveedor: "Cemex", monto_usd: null, monto_bs_directo: 1200, monto_bs: 1200 },
+  ],
+  ventas_por_vendedor: [
+    { vendedor: "Vendedor 1", total_bs: 21500, ventas: 28 },
+    { vendedor: "Vendedor 2", total_bs: 17300, ventas: 21 },
+    { vendedor: "Vendedor 3", total_bs: 9450.75, ventas: 13 },
   ],
 };
 
