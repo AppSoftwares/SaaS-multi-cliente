@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generarCodigoBarrasInterno } from "@/lib/barcode";
 import { calcularVencimiento, hoyVenezuela } from "@/lib/vencimiento";
+import { requirePermisoFacturas } from "@/lib/facturas-auth";
 
 export const runtime = "nodejs";
 
@@ -36,15 +37,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const { data: rolRow } = await supabase
-    .from("roles_usuario")
-    .select("rol, negocio_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (rolRow?.rol !== "ADMIN" || !rolRow.negocio_id) {
-    return NextResponse.json({ error: "Solo un ADMIN puede registrar facturas" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
-  const negocioId = rolRow.negocio_id;
+  const negocioId = guard.negocioId;
 
   const body = await req.json();
   const f = body.factura ?? {};

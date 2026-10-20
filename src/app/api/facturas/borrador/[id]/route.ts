@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requirePermisoFacturas } from "@/lib/facturas-auth";
 
 export const runtime = "nodejs";
 
@@ -12,20 +13,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const { data: rolRow } = await supabase
-    .from("roles_usuario")
-    .select("rol, negocio_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (rolRow?.rol !== "ADMIN" || !rolRow.negocio_id) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
 
   const { data: factura } = await supabase
     .from("facturas")
     .select("*")
     .eq("id", id)
-    .eq("negocio_id", rolRow.negocio_id)
+    .eq("negocio_id", guard.negocioId)
     .eq("estado", "borrador")
     .maybeSingle();
   if (!factura) return NextResponse.json({ error: "Borrador no encontrado" }, { status: 404 });
@@ -49,20 +46,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const { data: rolRow } = await supabase
-    .from("roles_usuario")
-    .select("rol, negocio_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (rolRow?.rol !== "ADMIN" || !rolRow.negocio_id) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
 
   const { error } = await supabase
     .from("facturas")
     .delete()
     .eq("id", id)
-    .eq("negocio_id", rolRow.negocio_id)
+    .eq("negocio_id", guard.negocioId)
     .eq("estado", "borrador");
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 

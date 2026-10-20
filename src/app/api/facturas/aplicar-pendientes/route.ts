@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requirePermisoFacturas } from "@/lib/facturas-auth";
 
 export const runtime = "nodejs";
 
@@ -31,13 +32,9 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  const { data: rolRow } = await supabase
-    .from("roles_usuario")
-    .select("rol")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (rolRow?.rol !== "ADMIN") {
-    return NextResponse.json({ error: "Solo un ADMIN puede aplicar la factura" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
 
   const { data, error } = await supabase.rpc("aplicar_entrega_factura", { p_factura_id: facturaId });

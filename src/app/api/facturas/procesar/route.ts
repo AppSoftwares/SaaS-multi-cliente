@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { extraerDatosFactura } from "@/lib/openai";
 import { escapeLike } from "@/lib/utils";
 import { permitido } from "@/lib/rate-limit";
+import { requirePermisoFacturas } from "@/lib/facturas-auth";
 import type { Producto, ResultadoProcesarFactura, ItemFacturaProcesado } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -18,13 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const { data: rolRow } = await supabase
-    .from("roles_usuario")
-    .select("rol")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (rolRow?.rol !== "ADMIN") {
-    return NextResponse.json({ error: "Solo un ADMIN puede registrar facturas" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
 
   if (!permitido(user.id)) {

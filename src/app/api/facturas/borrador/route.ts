@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calcularVencimiento, hoyVenezuela } from "@/lib/vencimiento";
+import { requirePermisoFacturas } from "@/lib/facturas-auth";
 
 export const runtime = "nodejs";
 
@@ -22,15 +23,6 @@ interface ItemBorrador {
   es_nuevo: boolean;
 }
 
-async function rolAdmin(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data } = await supabase
-    .from("roles_usuario")
-    .select("rol, negocio_id")
-    .eq("id", userId)
-    .maybeSingle();
-  return data;
-}
-
 // Guarda (crea o actualiza) una factura en estado 'borrador' con sus ítems,
 // para que el usuario pueda salir del wizard y reabrirla después sin perder
 // lo que la IA ya extrajo.
@@ -41,11 +33,11 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const rolRow = await rolAdmin(supabase, user.id);
-  if (rolRow?.rol !== "ADMIN" || !rolRow.negocio_id) {
-    return NextResponse.json({ error: "Solo un ADMIN puede registrar facturas" }, { status: 403 });
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
-  const negocioId = rolRow.negocio_id;
+  const negocioId = guard.negocioId;
 
   const body = await req.json();
   const facturaId: string | undefined = body.facturaId || undefined;
@@ -136,15 +128,15 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const rolRow = await rolAdmin(supabase, user.id);
-  if (rolRow?.rol !== "ADMIN" || !rolRow.negocio_id) {
+  const guard = await requirePermisoFacturas(supabase, user.id);
+  if (!guard.ok) {
     return NextResponse.json({ borradores: [] });
   }
 
   const { data } = await supabase
     .from("facturas")
     .select("id, numero_factura, proveedor_id, moneda, monto_total, updated_at, proveedores(nombre), factura_items(count)")
-    .eq("negocio_id", rolRow.negocio_id)
+    .eq("negocio_id", guard.negocioId)
     .eq("estado", "borrador")
     .order("updated_at", { ascending: false });
 
