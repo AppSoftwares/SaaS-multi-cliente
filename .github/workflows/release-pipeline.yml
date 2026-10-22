@@ -43,27 +43,31 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
-      - name: Build Android Release
+      - name: Build Android App (Debug or Release)
         run: |
           cd android
           chmod +x gradlew
           if [ -f "app/release.jks" ]; then
+            echo "Keystore found. Building signed Release APK & AAB..."
             ./gradlew assembleRelease bundleRelease
           else
-            ./gradlew assembleRelease
+            echo "Keystore secret not provided. Building Debug APK for validation..."
+            ./gradlew assembleDebug
           fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          name: app-apk
+          path: |
+            android/app/build/outputs/apk/**/*.apk
 
       - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-aab
-          path: android/app/build/outputs/bundle/**/*.aab
+          name: app-aab
+          path: |
+            android/app/build/outputs/bundle/**/*.aab
 
   build-ios:
     name: Build iOS (IPA)
@@ -83,8 +87,18 @@ jobs:
       - name: Sync Capacitor iOS
         run: npx cap sync ios
 
+      - name: Check iOS Signing Secrets
+        id: check_secrets
+        run: |
+          if [ "${{ secrets.IOS_P12_BASE64 }}" != "" ]; then
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+            echo "⚠️ iOS signing secrets (IOS_P12_BASE64) are not configured. Skipping iOS signing/archiving to keep pipeline green."
+          fi
+
       - name: Setup Signing (Keychain & Provisioning Profile)
-        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         env:
           P12: ${{ secrets.IOS_P12_BASE64 }}
           P12_PASS: ${{ secrets.IOS_P12_PASSWORD }}
@@ -103,6 +117,7 @@ jobs:
           cp app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
       - name: Generate ExportOptions.plist
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         run: |
           cat << EOF > ios/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
@@ -124,25 +139,22 @@ jobs:
           EOF
 
       - name: Archive iOS App
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         run: |
-          if [ "${{ secrets.IOS_P12_BASE64 }}" != "" ]; then
-            xcodebuild -project ios/App/App.xcodeproj -scheme App \
-              -configuration Release -archivePath $PWD/build/App.xcarchive \
-              archive CODE_SIGN_STYLE=Manual \
-              DEVELOPMENT_TEAM=${{ secrets.IOS_TEAM_ID }}
-          else
-            echo "Signing secrets not present. Skipping iOS archive in manual run without secrets."
-          fi
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Release -archivePath $PWD/build/App.xcarchive \
+            archive CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=${{ secrets.IOS_TEAM_ID }}
 
       - name: Export IPA
-        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         run: |
           xcodebuild -exportArchive -archivePath build/App.xcarchive \
             -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
-        if: "${{ secrets.IOS_P12_BASE64 != '' }}"
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         with:
           name: app-ipa
           path: build/ipa/*.ipa
