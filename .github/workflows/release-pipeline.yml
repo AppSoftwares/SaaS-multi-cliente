@@ -7,10 +7,6 @@ on:
         description: 'Versión de la release (ej. v1.0.0)'
         required: true
         default: 'v1.0.0'
-  push:
-    tags:
-      - 'v*'
-      - 'app-v*'
 
 jobs:
   build-android:
@@ -54,7 +50,7 @@ jobs:
           if [ -f "app/release.jks" ]; then
             ./gradlew assembleRelease bundleRelease
           else
-            ./gradlew assembleRelease || true
+            ./gradlew assembleRelease
           fi
 
       - name: Upload APK Artifact
@@ -129,16 +125,13 @@ jobs:
 
       - name: Archive iOS App
         run: |
-          if [ "${{ secrets.IOS_P12_BASE64 != '' }}" ]; then
+          if [ "${{ secrets.IOS_P12_BASE64 }}" != "" ]; then
             xcodebuild -project ios/App/App.xcodeproj -scheme App \
               -configuration Release -archivePath $PWD/build/App.xcarchive \
               archive CODE_SIGN_STYLE=Manual \
               DEVELOPMENT_TEAM=${{ secrets.IOS_TEAM_ID }}
           else
-            echo "Signing secrets not present. Building simulator test archive (unsigned)."
-            xcodebuild -project ios/App/App.xcodeproj -scheme App \
-              -configuration Release -sdk iphonesimulator \
-              CODE_SIGNING_ALLOWED=NO -derivedDataPath build || true
+            echo "Signing secrets not present. Skipping iOS archive in manual run without secrets."
           fi
 
       - name: Export IPA
