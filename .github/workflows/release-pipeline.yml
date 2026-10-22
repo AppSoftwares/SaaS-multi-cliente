@@ -35,6 +35,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
 
       - name: Build Android App
         env:
@@ -104,7 +106,7 @@ jobs:
             UUID=$(grep -a -A1 UUID app.mobileprovision | grep -io "[0-9a-f-]\{36\}" | head -1)
             cp app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
-            cat << EOF > ios/ExportOptions.plist
+            cat << 'EOF' > ios/ExportOptions.plist
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
@@ -116,12 +118,14 @@ jobs:
                 <key>stripSwiftSymbols</key>
                 <true/>
                 <key>teamID</key>
-                <string>$TEAM_ID</string>
+                <string>TEAM_ID_PLACEHOLDER</string>
                 <key>uploadSymbols</key>
                 <true/>
             </dict>
             </plist>
             EOF
+            # Replace placeholder with actual TEAM_ID safely
+            sed -i '' "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/g" ios/ExportOptions.plist
 
             xcodebuild -project ios/App/App.xcodeproj -scheme App \
               -configuration Release -archivePath $PWD/build/App.xcarchive \
