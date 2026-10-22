@@ -118,5 +118,5 @@ npx cap sync
 
 ## 📄 Licencia y Prividez
 
-Desarrollado por **Rose Industry**. Todos los derechos reservados.
+Desarrollado por **App Sotfwares**. Todos los derechos reservados.
 Sistema protegido por politicas de aislamiento multi-cliente y normativas de seguridad de datos comerciales.
