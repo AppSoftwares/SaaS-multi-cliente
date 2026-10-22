@@ -3,7 +3,10 @@ name: Build Android
 on:
   workflow_dispatch:
   push:
+    branches: [main, master]
     tags: ['android-v*']
+  pull_request:
+    branches: [main, master]
 
 jobs:
   android:
@@ -29,6 +32,9 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Decode Keystore
         if: "${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}"
         env:
@@ -36,20 +42,26 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
-      - name: Build Android Release
+      - name: Build Android Debug & Release
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease bundleRelease
+          ./gradlew assembleDebug
+          if [ -f "app/release.jks" ]; then
+            ./gradlew assembleRelease bundleRelease
+          else
+            echo "Keystore not provided. Skipping signed release build, building unsigned release for testing."
+            ./gradlew assembleRelease || true
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: app-apk
+          path: android/app/build/outputs/apk/**/*.apk
 
       - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-aab
-          path: android/app/build/outputs/bundle/release/*.aab
+          name: app-aab
+          path: android/app/build/outputs/bundle/**/*.aab
