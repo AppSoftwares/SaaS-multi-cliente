@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -93,53 +93,54 @@ jobs:
           TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           KC_PASS: ${{ secrets.KEYCHAIN_PASSWORD || 'buildpassword123' }}
         run: |
-          if [ -n "$P12_BASE64" ]; then
-            echo "iOS signing secrets found. Setting up signing..."
-            echo "$P12_BASE64" | base64 --decode > cert.p12
-            echo "$PROFILE_BASE64" | base64 --decode > app.mobileprovision
-            security create-keychain -p "$KC_PASS" build.keychain
-            security default-keychain -s build.keychain
-            security unlock-keychain -p "$KC_PASS" build.keychain
-            security import cert.p12 -k build.keychain -P "$P12_PASS" -T /usr/bin/codesign
-            security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" build.keychain
-            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-            UUID=$(grep -a -A1 UUID app.mobileprovision | grep -io "[0-9a-f-]\{36\}" | head -1)
-            cp app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-
-            cat << 'EOF' > ios/ExportOptions.plist
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>method</key>
-                <string>app-store</string>
-                <key>signingStyle</key>
-                <string>manual</string>
-                <key>stripSwiftSymbols</key>
-                <true/>
-                <key>teamID</key>
-                <string>TEAM_ID_PLACEHOLDER</string>
-                <key>uploadSymbols</key>
-                <true/>
-            </dict>
-            </plist>
-            EOF
-            # Replace placeholder with actual TEAM_ID safely
-            sed -i '' "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/g" ios/ExportOptions.plist
-
-            xcodebuild -project ios/App/App.xcodeproj -scheme App \
-              -configuration Release -archivePath $PWD/build/App.xcarchive \
-              archive CODE_SIGN_STYLE=Manual \
-              DEVELOPMENT_TEAM="$TEAM_ID"
-
-            xcodebuild -exportArchive -archivePath build/App.xcarchive \
-              -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
-          else
+          set -e
+          if [ -z "$P12_BASE64" ]; then
             echo "⚠️ iOS signing secrets not provided. Performing test build (Code Signing disabled)."
             xcodebuild -project ios/App/App.xcodeproj -scheme App \
               -configuration Release -sdk iphonesimulator \
               CODE_SIGNING_ALLOWED=NO -derivedDataPath build || true
+            exit 0
           fi
+
+          echo "iOS signing secrets found. Setting up signing..."
+          echo "$P12_BASE64" | base64 --decode > cert.p12
+          echo "$PROFILE_BASE64" | base64 --decode > app.mobileprovision
+          security create-keychain -p "$KC_PASS" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KC_PASS" build.keychain
+          security import cert.p12 -k build.keychain -P "$P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" build.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(grep -a -A1 UUID app.mobileprovision | grep -io "[0-9a-f-]\{36\}" | head -1)
+          cp app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+
+          cat << 'EOF' > ios/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>teamID</key>
+              <string>TEAM_ID_PLACEHOLDER</string>
+              <key>uploadSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          sed -i '' "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/g" ios/ExportOptions.plist
+
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Release -archivePath $PWD/build/App.xcarchive \
+            archive CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID"
+
+          xcodebuild -exportArchive -archivePath build/App.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
