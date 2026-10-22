@@ -7,6 +7,10 @@ on:
         description: 'Versión de la release (ej. v1.0.0)'
         required: true
         default: 'v1.0.0'
+  push:
+    tags:
+      - 'v*'
+      - 'app-v*'
 
 jobs:
   build-android:
@@ -147,3 +151,30 @@ jobs:
         with:
           name: app-ipa
           path: build/ipa/*.ipa
+
+  create-release:
+    name: Publicar Release y Adjuntar Binarios
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all workflow artifacts
+        uses: actions/download-artifact@v4
+
+      - name: List downloaded files
+        run: ls -R
+
+      - name: Crear GitHub Release y Subir Binarios
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || format('v{0}', github.run_number) }}
+          name: "Ferretería IA Release ${{ github.event.inputs.version || format('v{0}', github.run_number) }}"
+          body: |
+            ## 📱 Nueva Release Generada Automáticamente
+            - **Android APK / AAB**: Compilados en el pipeline de CI.
+            - **iOS IPA**: Compilado en el pipeline de CI.
+          files: |
+            app-apk/**/*.apk
+            app-aab/**/*.aab
+            app-ipa/*.ipa
